@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version consistency
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAURI_VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          CARGO_VERSION=$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          PKG_VERSION=$(jq -r '.version' package.json)
+
+          echo "Tag version:     $TAG_VERSION"
+          echo "Tauri version:   $TAURI_VERSION"
+          echo "Cargo version:   $CARGO_VERSION"
+          echo "package version: $PKG_VERSION"
+
+          if [ "$TAG_VERSION" != "$TAURI_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match tauri.conf.json version ($TAURI_VERSION)"
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match Cargo.toml version ($CARGO_VERSION)"
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            exit 1
+          fi
+
+          echo "All versions match: $TAG_VERSION"
+
+  release:
+    needs: verify-version
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-24.04
+            args: ""
+            rust-targets: ""
+          - platform: macos-latest
+            args: "--target universal-apple-darwin"
+            rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          - platform: windows-latest
+            args: ""
+            rust-targets: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "ptt-desktop ${{ github.ref_name }}"
+          releaseBody: |
+            ## 安裝方式
+
+            ### Linux
+
+            | 格式 | 安裝指令 |
+            |------|----------|
+            | AppImage | `chmod +x *.AppImage && ./*.AppImage` |
+            | deb | `sudo dpkg -i *.deb` |
+            | rpm | `sudo rpm -i *.rpm` |
+
+            ### macOS
+
+            下載 `.dmg`（universal，支援 Apple Silicon 與 Intel）。未經 Apple 公證，首次開啟請在 Finder 對 App 按右鍵 →「打開」，或執行 `xattr -cr "/Applications/ptt-desktop.app"`。
+
+            ### Windows
+
+            下載 `.msi` 或 `.exe` 安裝。未簽章，首次執行 SmartScreen 會警告 → 點「更多資訊」→「仍要執行」。
+          # 先建立 draft：三平台各自跑完才不會出現缺平台的公開 Release，確認齊全後手動 Publish
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -1,0 +1,10 @@
+{
+  "username": "your_ptt_id",
+  "password": "your_password",
+  "kickOtherLogins": "n",
+  "fontFamily": "Noto Sans Mono CJK TC",
+  "fontSize": 18,
+  "hotkeys": {
+    "F3": "sgossiping\r"
+  }
+}
