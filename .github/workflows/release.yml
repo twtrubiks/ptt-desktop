@@ -132,12 +132,16 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-      # AppImage 預設有兩個問題導致 IME 中文輸入不可用（deb/rpm 不受影響）：
+      # AppImage 預設有三個問題（deb/rpm 不受影響）：
       # 1. AppRun hook 強制 GDK_BACKEND=x11，關閉了 Wayland text-input（fcitx5/ibus）路徑
       # 2. 打包的 libwayland 過舊（ubuntu-24.04），與新系統的 Mesa 符號衝突，
       #    Wayland backend 一啟動就 symbol lookup error（wl_display_create_queue_with_name）
-      # 修法：移除強制 x11 + 移除打包的 libwayland（改用系統版），重新打包後覆蓋 Release 資產
-      - name: Patch AppImage for Wayland IME (中文輸入)
+      # 3. hook 的深色偵測只看 gtk-theme 名稱是否含 "dark"，但 KDE（Breeze）/GNOME 的深色
+      #    是設在 color-scheme=prefer-dark，永遠判成 light → 強制 GTK_THEME=Adwaita:light，
+      #    標題列、右鍵選單等原生 GTK 元件全變白色
+      # 修法：移除強制 x11 + 移除打包的 libwayland（改用系統版）+ 深色偵測加入 color-scheme，
+      # 重新打包後覆蓋 Release 資產
+      - name: Patch AppImage (Wayland IME 中文輸入 + 深色主題偵測)
         if: runner.os == 'Linux'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -150,6 +154,10 @@ jobs:
           grep -q '^export GDK_BACKEND=x11' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
           sed -i '/^export GDK_BACKEND=x11/d' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
           rm -f squashfs-root/usr/lib/libwayland-*.so*
+
+          # 深色偵測改成同時檢查 color-scheme 與 gtk-theme，任一含 "dark" 即用深色
+          grep -q '^gsettings get org.gnome.desktop.interface gtk-theme' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
+          sed -i 's#^gsettings get org.gnome.desktop.interface gtk-theme.*#{ gsettings get org.gnome.desktop.interface color-scheme; gsettings get org.gnome.desktop.interface gtk-theme; } 2>/dev/null | grep -qi "dark" \&\& GTK_THEME_VARIANT="dark" || GTK_THEME_VARIANT="light"#' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
 
           curl -sL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
