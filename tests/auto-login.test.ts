@@ -77,7 +77,18 @@ describe("AutoLogin：密碼錯誤走位元組層偵測（PTT 回應仍是 Big5�
     h.login.feed("請輸入代號：");
     h.login.feed("請輸入您的密碼：");
     // 模擬 PTT 回應：ESC[1;37m + Big5「密碼不對」+ 其他位元組
-    const chunk = Uint8Array.of(0x1b, 0x5b, 0x31, 0x3b, 0x33, 0x37, 0x6d, ...WRONG_PASSWORD_BIG5, 0xa9, 0xce);
+    const chunk = Uint8Array.of(
+      0x1b,
+      0x5b,
+      0x31,
+      0x3b,
+      0x33,
+      0x37,
+      0x6d,
+      ...WRONG_PASSWORD_BIG5,
+      0xa9,
+      0xce,
+    );
     h.login.feedBytes(chunk);
     expect(h.finished()).toEqual({ reason: "aborted", detail: "密碼不對" });
     expect(h.sent).toEqual(["myid,\r", "secret\r"]); // 不再送任何東西

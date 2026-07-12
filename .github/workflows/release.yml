@@ -51,7 +51,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-24.04
+          # 用 22.04 當 baseline：24.04 建出的 binary 要求 GLIBC_2.38+，
+          # 較舊的發行版（如 Ubuntu 22.04, glibc 2.35）跑不起來（issue #1）。
+          # Tauri 官方也建議用最舊且仍有 WebKitGTK 4.1 的系統建置：
+          # https://tauri.app/distribute/appimage/
+          - platform: ubuntu-22.04
             args: ""
             rust-targets: ""
           - platform: macos-latest
@@ -134,7 +138,7 @@ jobs:
 
       # AppImage 預設有三個問題（deb/rpm 不受影響）：
       # 1. AppRun hook 強制 GDK_BACKEND=x11，關閉了 Wayland text-input（fcitx5/ibus）路徑
-      # 2. 打包的 libwayland 過舊（ubuntu-24.04），與新系統的 Mesa 符號衝突，
+      # 2. 打包的 libwayland 過舊（來自建置平台 ubuntu-22.04），與新系統的 Mesa 符號衝突，
       #    Wayland backend 一啟動就 symbol lookup error（wl_display_create_queue_with_name）
       # 3. hook 的深色偵測只看 gtk-theme 名稱是否含 "dark"，但 KDE（Breeze）/GNOME 的深色
       #    是設在 color-scheme=prefer-dark，永遠判成 light → 強制 GTK_THEME=Adwaita:light，
