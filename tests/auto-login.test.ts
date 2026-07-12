@@ -68,6 +68,37 @@ describe("AutoLogin：完整登入流程（以實錄畫面近似文字餵入）"
   });
 });
 
+// 「密碼不對」的 Big5 位元組（同 src/auto-login.ts 的 WRONG_PASSWORD_BIG5）
+const WRONG_PASSWORD_BIG5 = Uint8Array.of(0xb1, 0x4b, 0xbd, 0x58, 0xa4, 0xa3, 0xb9, 0xef);
+
+describe("AutoLogin：密碼錯誤走位元組層偵測（PTT 回應仍是 Big5）", () => {
+  it("Big5「密碼不對」位元組（夾雜 ANSI 與其他內容）→ 中止", () => {
+    const h = setup();
+    h.login.feed("請輸入代號：");
+    h.login.feed("請輸入您的密碼：");
+    // 模擬 PTT 回應：ESC[1;37m + Big5「密碼不對」+ 其他位元組
+    const chunk = Uint8Array.of(0x1b, 0x5b, 0x31, 0x3b, 0x33, 0x37, 0x6d, ...WRONG_PASSWORD_BIG5, 0xa9, 0xce);
+    h.login.feedBytes(chunk);
+    expect(h.finished()).toEqual({ reason: "aborted", detail: "密碼不對" });
+    expect(h.sent).toEqual(["myid,\r", "secret\r"]); // 不再送任何東西
+  });
+
+  it("Big5 pattern 跨 chunk 切割仍能比對", () => {
+    const h = setup();
+    h.login.feedBytes(WRONG_PASSWORD_BIG5.slice(0, 3));
+    expect(h.finished()).toBeNull();
+    h.login.feedBytes(WRONG_PASSWORD_BIG5.slice(3));
+    expect(h.finished()).toEqual({ reason: "aborted", detail: "密碼不對" });
+  });
+
+  it("stop 後 feedBytes 不動作", () => {
+    const h = setup();
+    h.login.stop();
+    h.login.feedBytes(WRONG_PASSWORD_BIG5);
+    expect(h.finished()).toBeNull();
+  });
+});
+
 describe("AutoLogin：放棄自動登入、絕不自動重試", () => {
   it("密碼不對 → 中止且不再送任何東西", () => {
     const h = setup();

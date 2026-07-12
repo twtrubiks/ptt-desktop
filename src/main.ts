@@ -2,7 +2,7 @@
 // 下行：wss binary → telnet 濾層 → codec 解碼 → xterm；同時餵給自動登入狀態機。
 // 上行：xterm.onData →（快捷鍵層在 key event 階段先攔）→ UTF-8 binary 送出。
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AutoLogin } from "./auto-login";
+import { AutoLogin, WRONG_PASSWORD_DETAIL } from "./auto-login";
 import { PttDecoder } from "./codec";
 import { loadConfig } from "./config";
 import { PttConnection } from "./connection";
@@ -25,6 +25,9 @@ async function init(): Promise<void> {
     onBinary(data) {
       const filtered = telnet.filter(data);
       if (filtered.length === 0) return;
+      // 位元組層先餵：密碼錯時偵測到會（在 onFinished 內）把 codec 撥回 big5，
+      // 本 chunk 隨後就以正確編碼解碼，亂碼不會先上畫面
+      autoLogin?.feedBytes(filtered);
       const text = codec.decode(filtered);
       term.write(text);
       autoLogin?.feed(text);
@@ -54,6 +57,9 @@ async function init(): Promise<void> {
         onFinished: (reason, detail) => {
           autoLogin = null;
           if (reason === "aborted") {
+            // 密碼錯時 PTT 從未切到 UTF-8，撥回 big5 讓後續手動操作畫面可讀；
+            // 其他中止原因（如登入成功後主功能表字樣不符）不能撥，PTT 可能已在 UTF-8
+            if (detail === WRONG_PASSWORD_DETAIL) codec.reset();
             term.write(`\r\n\x1b[1;33m[自動登入中止（${detail ?? "未知原因"}），請手動操作]\x1b[m`);
           }
         },
