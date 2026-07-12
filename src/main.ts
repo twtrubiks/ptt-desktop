@@ -75,9 +75,13 @@ async function init(): Promise<void> {
     codec.reset();
     term.write("連線 wss://ws.ptt.cc/bbs 中...\r\n");
     try {
-      await conn.connect();
+      // 先啟動自動登入再連線：歡迎畫面可能在 connect() resolve 前就到達，
+      // 得先有 autoLogin 才接得到「請輸入代號」（逾時計時因此涵蓋連線期間）
       startAutoLogin();
+      await conn.connect();
     } catch (error) {
+      autoLogin?.stop();
+      autoLogin = null;
       awaitingReconnect = true;
       term.write(`\r\n\x1b[1;31m[連線失敗：${error}，按 Enter 重試]\x1b[m`);
     } finally {

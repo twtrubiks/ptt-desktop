@@ -1,7 +1,8 @@
 // tauri-plugin-websocket 封裝：帶 Origin header 連 PTT 官方 WebSocket 端點，
 // 下行 binary 交給呼叫端，並以 telnet NOP 做應用層 keepalive（防閒置踢出）。
 // WebSocket 傳輸層的 ping/pong 由 plugin 底層處理，與 BBS 應用層閒置計時是兩回事。
-import WebSocket from "@tauri-apps/plugin-websocket";
+import WebSocket, { type Message } from "@tauri-apps/plugin-websocket";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 const PTT_WS_URL = "wss://ws.ptt.cc/bbs";
 const PTT_ORIGIN = "https://term.ptt.cc";
@@ -18,6 +19,7 @@ export class PttConnection {
   private ws: WebSocket | null = null;
   private keepalive: ReturnType<typeof setInterval> | null = null;
   private encoder = new TextEncoder();
+  private generation = 0; // 每次 connect 遞增、斷線時再遞增，用來擋舊連線的殘留訊息
 
   constructor(private events: ConnectionEvents) {}
 
@@ -25,24 +27,51 @@ export class PttConnection {
     return this.ws !== null;
   }
 
+  // 不用 WebSocket.connect()：plugin 要等 connect() resolve 後才能 addListener，
+  // 期間到達的訊息會被空 listener 集合直接丟掉；PTT 一連上就推歡迎畫面，重連時
+  // 常撞進這個空窗，造成畫面卡在「連線中...」、自動登入等不到提示而逾時。
+  // 這裡照 plugin 的 connect() 實作先掛好 listener 再 invoke，ws 就緒前的訊息
+  // 暫存於 early、待 this.ws 賦值後依序補處理（自動登入的回應才送得出去）。
+  // 注意：依賴 plugin 內部 IPC 指令（plugin:websocket|connect），升級版本時需比對其實作。
   async connect(): Promise<void> {
     if (this.ws) return;
-    const ws = await WebSocket.connect(PTT_WS_URL, {
-      headers: { Origin: PTT_ORIGIN },
-    });
-    this.ws = ws;
-    ws.addListener((message) => {
-      if (this.ws !== ws) return; // 舊連線的殘留訊息
+    const gen = ++this.generation;
+    const early: Message[] = [];
+    const handle = (message: Message): void => {
+      if (this.generation !== gen) return; // 舊連線的殘留訊息
       if (message.type === "Binary") {
         this.events.onBinary(Uint8Array.from(message.data));
       } else if (message.type === "Close") {
         this.handleClose(message.data?.reason || "連線已關閉");
       }
+    };
+    const listeners = new Set<(message: Message) => void>([
+      (message) => {
+        if (this.ws === null && this.generation === gen) {
+          early.push(message);
+        } else {
+          handle(message);
+        }
+      },
+    ]);
+    const onMessage = new Channel<Message>();
+    onMessage.onmessage = (message) => {
+      listeners.forEach((l) => {
+        l(message);
+      });
+    };
+    const id = await invoke<number>("plugin:websocket|connect", {
+      url: PTT_WS_URL,
+      onMessage,
+      config: { headers: Array.from(new Headers({ Origin: PTT_ORIGIN }).entries()) },
     });
+    this.ws = new WebSocket(id, listeners);
+    for (const message of early) handle(message);
     this.startKeepalive();
   }
 
   async disconnect(): Promise<void> {
+    this.generation++; // 使本連線的殘留訊息失效
     this.stopKeepalive();
     const ws = this.ws;
     this.ws = null;
@@ -66,6 +95,7 @@ export class PttConnection {
 
   private handleClose(reason: string): void {
     if (!this.ws) return;
+    this.generation++; // 使本連線的殘留訊息失效
     this.stopKeepalive();
     const ws = this.ws;
     this.ws = null;
