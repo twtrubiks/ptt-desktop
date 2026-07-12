@@ -118,6 +118,8 @@ jobs:
             | deb | `sudo dpkg -i *.deb` |
             | rpm | `sudo rpm -i *.rpm` |
 
+            AppImage 若在 Wayland 下畫面異常，可退回 `GDK_BACKEND=x11 ./*.AppImage` 執行（此模式下中文輸入不可用）。
+
             ### macOS
 
             下載 `.dmg`（universal，支援 Apple Silicon 與 Intel）。未經 Apple 公證，首次開啟請在 Finder 對 App 按右鍵 →「打開」，或執行 `xattr -cr "/Applications/ptt-desktop.app"`。
@@ -129,3 +131,28 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # AppImage 預設有兩個問題導致 IME 中文輸入不可用（deb/rpm 不受影響）：
+      # 1. AppRun hook 強制 GDK_BACKEND=x11，關閉了 Wayland text-input（fcitx5/ibus）路徑
+      # 2. 打包的 libwayland 過舊（ubuntu-24.04），與新系統的 Mesa 符號衝突，
+      #    Wayland backend 一啟動就 symbol lookup error（wl_display_create_queue_with_name）
+      # 修法：移除強制 x11 + 移除打包的 libwayland（改用系統版），重新打包後覆蓋 Release 資產
+      - name: Patch AppImage for Wayland IME (中文輸入)
+        if: runner.os == 'Linux'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage)
+          chmod +x "$APPIMAGE"
+          "$APPIMAGE" --appimage-extract > /dev/null
+
+          # 確認上游 hook 仍有這行；若消失代表 Tauri 打包行為已變，此 patch 需重新檢視
+          grep -q '^export GDK_BACKEND=x11' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
+          sed -i '/^export GDK_BACKEND=x11/d' squashfs-root/apprun-hooks/linuxdeploy-plugin-gtk.sh
+          rm -f squashfs-root/usr/lib/libwayland-*.so*
+
+          curl -sL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run squashfs-root "$APPIMAGE"
+
+          gh release upload "$GITHUB_REF_NAME" "$APPIMAGE" --clobber

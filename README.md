@@ -47,7 +47,7 @@
 
 | 平台 | 檔案 | 備註 |
 |---|---|---|
-| Linux | `.AppImage` / `.deb` / `.rpm` | AppImage 需先 `chmod +x` |
+| Linux | `.AppImage` / `.deb` / `.rpm` | AppImage 需先 `chmod +x`；若 Wayland 下畫面異常，可退回 `GDK_BACKEND=x11 ./xxx.AppImage` 執行（此模式下中文輸入不可用） |
 | macOS | `.dmg`（universal） | 未經 Apple 公證，首次開啟請對 App 按右鍵 →「打開」，或執行 `xattr -cr "/Applications/ptt-desktop.app"` |
 | Windows | `.msi` / `.exe` | 未簽章，SmartScreen 警告時點「更多資訊」→「仍要執行」 |
 
