@@ -47,8 +47,7 @@ xterm keydown → hotkeys.ts（命中快捷鍵展開為指令序列，否則放�
 
 ## PTT WebSocket 端點
 
-- 官方端點 `wss://ws.ptt.cc/bbs`
-  （公告：https://www.ptt.cc/bbs/SYSOP/M.1496571808.A.608.html），
+- 官方端點 `wss://ws.ptt.cc/bbs`，
   連線需帶 `Origin: https://term.ptt.cc` header，
   由 tauri-plugin-websocket 的 `connect()` 自訂 headers 帶入（`src/connection.ts`）
 - 串流內容是 telnet-over-WebSocket：連線即收到 IAC 協商
@@ -69,8 +68,7 @@ xterm keydown → hotkeys.ts（命中快捷鍵展開為指令序列，否則放�
 
 ## 編碼（`src/codec.ts`）
 
-PTT 登入前的畫面是 Big5(-UAO)；登入帳號後面加逗號（`id,`）可切換為 UTF-8 輸出
-（https://blog.longwin.com.tw/2017/03/ptt-cc-telnet-utf8-login-2017/）。
+PTT 登入前的畫面是 Big5(-UAO)；登入帳號後面加逗號（`id,`）可切換為 UTF-8 輸出,
 實測切換點在串流中間：送出帳號後的「請輸入您的密碼:」仍是 Big5，
 其後的輸出即為合法 UTF-8。因此：
 
@@ -83,9 +81,10 @@ PTT 登入前的畫面是 Big5(-UAO)；登入帳號後面加逗號（`id,`）可
   非法位元組以 U+FFFD 替代（non-fatal 預設行為），串流不中斷
 - 上行全程用 `TextEncoder`（UTF-8）：登入前的上行只有 ASCII（帳號、密碼），
   不受編碼影響；登入後 PTT 已在 UTF-8 模式
-- 登入前的 Big5 橫幅若遇到 ANSI 藝術半字元上色可能少數破圖
-  （僅限登入畫面，屬已知取捨）。Big5-UAO 完整對照
-  （https://github.com/eight04/uao-js）為備援方案，目前未需要
+- 彩繪的半字元上色（SGR 插在全形字的兩個 byte 中間）會讓 Big5 字被劈開、
+  解出 U+FFFD，屬已知取捨，見下方「已知限制：PTT 彩繪（ANSI art）會跑版」。
+  這是位元組被切割、不是查表查不到——實錄登入畫面的 FFFD 全數來自切割，
+  標準 big5 表的覆蓋率已足夠，換更完整的對照表（如 Big5-UAO）解不出更多字
 
 ## 自動登入狀態機（`src/auto-login.ts`）
 
@@ -101,8 +100,7 @@ PTT 登入前的畫面是 Big5(-UAO)；登入帳號後面加逗號（`id,`）可
 | 「密碼不對」、同一提示重複出現、或任一步卡超過 10 秒 | 中止並交還手動，**絕不自動重試**（避免鎖帳號） |
 
 例外：「密碼不對」不能用解碼後文字比對——密碼錯時 PTT 從未切到 UTF-8、
-仍以 Big5 重送畫面，但 codec 已切 utf-8，字面永遠比對不到（2026-07-12 E2E
-實測只會落到逾時 + 滿畫面亂碼）。因此這條 pattern 在 telnet 濾層後的
+仍以 Big5 重送畫面，但 codec 已切 utf-8，字面永遠比對不到。因此這條 pattern 在 telnet 濾層後的
 **原始位元組層**比對 Big5 序列（`feedBytes()`），且 main.ts 在收到此中止原因時
 會把 codec 撥回 big5，讓交還手動後的畫面可讀。
 
@@ -157,6 +155,47 @@ PTT 登入前的畫面是 Big5(-UAO)；登入帳號後面加逗號（`id,`）可
 
 已知限制：PTT 是 server 端 80 欄硬換行，跨行網址無 `isWrapped` 標記，
 底線與點擊都只涵蓋單行內的網址。
+
+## 已知限制：PTT 彩繪（ANSI art）會跑版
+
+PTT 的 Big5 手工彩繪（登入畫面橫幅、主功能表的雨字、彩繪文章、簽名檔）
+在 xterm.js 上顯示會跑版：比例、色塊接縫、雙色字都跟 term.ptt.cc 對不起來。
+
+**影響範圍僅止於彩繪的視覺呈現。** 一般文字（看板列表、文章內文、推文、選單、
+框線與【】欄位）的排版、對齊與色彩完全正常，所有功能不受影響——
+日常逛板／看文／推文與 term.ptt.cc 無異，只有極致彩繪差一點。
+
+### 根因（已調查，不必重查）
+
+四個各自獨立、疊加的根因，每條的修法都已實作並驗證過：
+
+1. **雙色字**：彩繪慣用「把 SGR 色碼插在一個全形字的兩個 byte 中間」讓左右半字
+   異色（光登入畫面 4347 bytes 就有 111 處）。TextDecoder 遇到被劈開的字吐
+   U+FFFD、孤兒 byte 變雜訊字母。修法是解碼前把 SGR 搬到整個字之後，
+   代價是該字整個套用前半色（雙色降級為單色）。
+2. **字元寬度**：方塊、框線等彩繪主力字元屬 East Asian Ambiguous，xterm 內建
+   wcwidth 算 1 格，但 PTT 版面以 Big5 語意（2 格）編排，行內被壓縮、
+   游標定位又拉回正確欄位 → 條紋與縫隙。修法是自訂 unicode provider
+   讓 Big5 語意字元一律回報 2 格。
+3. **方塊黑縫**：實心方塊拼接處露出黑底細縫。非字型問題——真因是 xterm 預設的
+   DOM renderer 逐 `<span>` 排版，相鄰格亞像素取整讓實心塊拼接處露底；
+   xterm 內建的 `customGlyphs`（U+2500–259F 當背景色塊滿格自繪）**DOM renderer
+   不支援**（`xterm.d.ts` 明載），只在 canvas/webgl 生效。修法是改掛
+   `@xterm/addon-canvas`。
+4. **縱向拉長**：整張彩繪被縱向拉長約 45%（圓臉變高瘦）。Noto Sans Mono CJK 的
+   hhea 行高 1.448em（ascender 1.16 + |descender| 0.288）遠大於全形字寬 1em，
+   而 xterm 用 `measureText("W")` 的 `fontBoundingBox` 當每列高度 → 每格是
+   「寬 1em × 高 1.448em」的直立長方形。（文字拉長 45% 人眼不敏感，
+   但幾何圖案的比例失真一眼可見。）修法是動態量測字型 metrics 把每格壓成正方形。
+
+### 決定：不採用該修法，接受現況
+
+四層全部修完後實測，**UI/UX 仍然會跑版**，因此不採用。
+
+term.ptt.cc（PttChrome）是自繪每個 byte-cell 的 PTT 專用渲染器，雙色與滿格色塊
+是它的原生能力；要在通用終端 xterm.js 上做到像素級復刻，等於自幹渲染核心，
+與本專案「薄、少依賴、不重新排版」的取向不符，投報率不成立。
+彩繪跑版換到的是 xterm.js 帶來的整體穩定度與極小的維護面。
 
 ## 快捷鍵（`src/hotkeys.ts`）
 
