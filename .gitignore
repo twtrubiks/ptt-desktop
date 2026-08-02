@@ -15,6 +15,10 @@ dist-ssr
 # 個人 E2E 驗收清單，不進 git
 docs/e2e-checklist.md
 
+# Claude harness（本機個人設定與逐任務 contract 不進 git）
+.claude/settings.local.json
+.claude/harness/contracts/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

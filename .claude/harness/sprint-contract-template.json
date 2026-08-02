@@ -1,0 +1,26 @@
+{
+  "task_id": "P{N}",
+  "subject": "",
+  "scope": {
+    "frontend": [],
+    "rust": [],
+    "tests": [],
+    "docs": []
+  },
+  "non_goals": [],
+  "checks": [],
+  "runtime_validation": {
+    "quality": "npm run quality",
+    "build": "npm run build",
+    "test": "npm test"
+  },
+  "manual_e2e_items": [],
+  "risk_flags": [],
+  "reviewer_profile": "static",
+  "invariants": [
+    "自動登入絕不自動重試",
+    "Rust 側不含業務邏輯",
+    "不新增依賴（除非本 contract 明列並附理由）",
+    "帳密不進 log / 測試 / repo"
+  ]
+}
