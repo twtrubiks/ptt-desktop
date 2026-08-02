@@ -19,6 +19,10 @@ docs/e2e-checklist.md
 .claude/settings.local.json
 .claude/harness/contracts/
 
+# P4 dev 錄製原始檔（含個資：登入回顯代號、狀態列），絕不進 repo；
+# 清洗後的 fixture 才進 tests/fixtures
+recordings/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

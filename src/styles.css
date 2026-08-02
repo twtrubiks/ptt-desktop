@@ -1,3 +1,11 @@
+/* 捆綁字型：Noto Sans Mono CJK TC 的衍生版，垂直度量壓到 1em（= 全形字寬），
+   xterm 的每列高度因此等於全形字寬，彩繪不再縱向拉長 45%。
+   產製腳本 scripts/build-font.py，授權 src/assets/OFL.txt（SIL OFL 1.1）。 */
+@font-face {
+  font-family: "PTT Square Mono";
+  src: url("./assets/ptt-square-mono.woff2") format("woff2");
+}
+
 html,
 body {
   margin: 0;

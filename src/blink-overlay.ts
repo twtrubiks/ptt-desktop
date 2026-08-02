@@ -6,21 +6,25 @@ import type { IBufferCell, Terminal } from "@xterm/xterm";
 
 const BLINK_INTERVAL_MS = 500; // on/off 各半，1 秒完整週期，與 xterm 游標閃爍同節奏
 
-// 與 xterm 未設 theme 時的預設調色盤一致（@xterm/xterm src/browser/Types.ts 的 DEFAULT_ANSI_COLORS）
-const DEFAULT_FOREGROUND = "#ffffff";
-const DEFAULT_BACKGROUND = "#000000";
+// PTT 傳統 VGA 色盤（與 term.ptt.cc／PttChrome 相同；色值來源
+// PttChrome src/styles/color.scss $color-0…$color-15）。這裡是全 app 的
+// 單一色盤出處：terminal.ts 據此設定 xterm theme，duotone-overlay 疊繪同表。
+// BBS 慣例：明確黑底（SGR 40）＝預設背景＝純黑、預設前景＝color 7；xterm
+// 預設 Tango 的「黑」是 #2e3436 暗灰，黑底彩繪會浮出灰黑拼布（第七根因）
+export const DEFAULT_FOREGROUND = "#c0c0c0";
+export const DEFAULT_BACKGROUND = "#000000";
 // 兩行排版對應 ANSI 標準色／亮色兩組
 // prettier-ignore
-const ANSI_16 = [
-  "#2e3436", "#cc0000", "#4e9a06", "#c4a000", "#3465a4", "#75507b", "#06989a", "#d3d7cf",
-  "#555753", "#ef2929", "#8ae234", "#fce94f", "#729fcf", "#ad7fa8", "#34e2e2", "#eeeeec",
+export const ANSI_16 = [
+  "#000000", "#800000", "#008000", "#808000", "#000080", "#800080", "#008080", "#c0c0c0",
+  "#808080", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff",
 ];
 
-function rgbCss(rgb: number): string {
+export function rgbCss(rgb: number): string {
   return `#${rgb.toString(16).padStart(6, "0")}`;
 }
 
-function paletteCss(index: number): string {
+export function paletteCss(index: number): string {
   if (index < 16) return ANSI_16[index];
   if (index < 232) {
     // 6×6×6 色立方（16–231）

@@ -2,8 +2,9 @@
   "username": "your_ptt_id",
   "password": "your_password",
   "kickOtherLogins": "n",
-  "fontFamily": "Noto Sans Mono CJK TC",
+  "fontFamily": "PTT Square Mono",
   "fontSize": 18,
+  "lineHeight": 1,
   "hotkeys": {
     "F3": "sgossiping\r"
   }
