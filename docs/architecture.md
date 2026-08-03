@@ -13,7 +13,7 @@ PTT 桌面客戶端，Tauri 2 + xterm.js。本文件描述目前的架構與各�
 ptt-desktop/
 ├── src/                     # 前端 TypeScript（所有業務邏輯）
 │   ├── main.ts              # 進入點：組裝各模組、連線／重連流程
-│   ├── terminal.ts          # xterm.js 初始化（固定 80×24、字寬 provider、webgl renderer）、縮放調字型
+│   ├── terminal.ts          # xterm.js 初始化（固定 80×24、字寬 provider、DOM renderer）、縮放調字型
 │   ├── assets/              # 捆綁字型 PTT Square Mono（產製：scripts/build-font.py）＋ OFL 授權
 │   ├── connection.ts        # tauri-plugin-websocket 封裝＋keepalive
 │   ├── dev-recorder.ts      # dev-only 下行錄製（P4 探勘；release build 經 tree-shake 不含）
@@ -182,14 +182,17 @@ PTT 登入前的畫面是 Big5(-UAO)；登入帳號後面加逗號（`id,`）可
   畫面由 PTT 自行管理）
 - 視窗縮放只調字型大小（8–72），不改行列數；縮放比例對字型大小非嚴格線性，
   迭代兩次收斂。字型載入完成後重新量測一次（格寬會變）
-- **webgl renderer**（`@xterm/addon-webgl`）：DOM renderer 逐 `<span>`
-  排版，實心方塊在拼接處露出黑縫；webgl 以 glyph quad 整數格對齊平鋪無縫。
-  掛載以 try/catch 包裹，WebKitGTK 拿不到 WebGL context 時退回 DOM renderer
-  （彩繪有細縫但功能完好），`onContextLoss` 時 dispose 同樣退回——
-  純視覺強化，絕不中斷連線主流程。`customGlyphs` 已停用（第六根因，
-  見「PTT 彩繪」）：其自繪一律只畫單格寬，而 PTT 的框線/方塊經字寬
-  provider 報 2 格，右半格永遠空白；框線/方塊字形一律走字型光柵化，
-  由捆綁字型保證覆蓋（`tests/font-coverage.test.ts` 守門）
+- **DOM renderer**（xterm 內建，不掛任何 renderer addon）：曾於 P2 掛
+  `@xterm/addon-webgl` 消除實心方塊拼接處的黑縫（webgl 以 glyph quad 整數格
+  對齊平鋪無縫），但 0.1.4 實測**瀏覽一段時間後字形圖集（texture atlas）
+  快取會損壞**：畫面字形碎裂疊影，而 buffer 內容正常（縮放視窗改字型大小
+  觸發圖集重建即復原）。同一 renderer 在 VS Code 終端有同症狀
+  （多頁圖集合併路徑 xtermjs/xterm.js#4061；vscode#174399、#287584、#69665），
+  未能分辨是 addon 0.19.0 自身或 WebKitGTK／GPU 驅動層。取捨定為
+  **正確性優先於無縫**：移除 addon 回到 DOM renderer，逐 `<span>` 排版，
+  彩繪拼接處有細縫但永不亂碼（黑縫回歸記於「PTT 彩繪」根因 3）。
+  `customGlyphs: false` 保留（DOM renderer 不支援此選項故為 no-op），
+  作為防禦：日後若再掛 GPU renderer，第六根因不會靜默回歸
 - **不套合成粗體**（`fontWeightBold: "normal"`，第八根因，見「PTT 彩繪」）：
   捆綁字型只有 Regular，合成粗體會把字形撐出 em 方框、在字形圖集邊界被
   裁掉，滿格方塊底緣與右緣各露 1px 暗線。BBS 的 SGR 1 語意是選亮色，
@@ -277,14 +280,17 @@ Tango 色盤，P8 已修）；P8 修法的機械複驗（實錄重播＋逐格�
    （`src/duotone.ts`、`src/duotone-overlay.ts`）：xterm cell 模型一格一色的
    天花板，繞道「拆成兩個窄字元各自帶色、字形由 overlay 繪回」。
 2. **字元寬度壓縮條紋** — ✅ 已修（`src/unicode-ptt.ts`，見「彩繪修正層」）。
-3. **方塊黑縫** — ✅ 已修（webgl renderer，見「畫面呈現」；WebKitGTK 穩定性
-   由使用者實測定案）。實心方塊拼接處露出黑底細縫。非字型問題——真因是
-   xterm 預設的 DOM renderer 逐 `<span>` 排版，相鄰格亞像素取整讓實心塊拼接處
-   露底；xterm 內建的 `customGlyphs`（U+2500–259F 當背景色塊滿格自繪）
-   **DOM renderer 不支援**（`xterm.d.ts` 明載），只在 canvas/webgl 生效。
-   `@xterm/addon-canvas` 已在 xterm 6 被上游移除，僅剩 `@xterm/addon-webgl`。
-   （後記：customGlyphs 於 P7 因第六根因停用，無縫改由「webgl glyph quad
-   整數格平鋪＋捆綁字型墨水滿行高箱」保證，見根因 6。）
+3. **方塊黑縫** — ⚠️ **已知限制（0.1.4 後回歸，刻意取捨）**。實心方塊拼接處
+   露出黑底細縫。非字型問題——真因是 xterm 預設的 DOM renderer 逐 `<span>`
+   排版，相鄰格亞像素取整讓實心塊拼接處露底；xterm 內建的 `customGlyphs`
+   （U+2500–259F 當背景色塊滿格自繪）**DOM renderer 不支援**
+   （`xterm.d.ts` 明載），只在 canvas/webgl 生效。`@xterm/addon-canvas` 已在
+   xterm 6 被上游移除，僅剩 `@xterm/addon-webgl`。
+   （沿革：P2 曾掛 webgl renderer 修掉此縫，customGlyphs 於 P7 因第六根因停用、
+   無縫改由「glyph quad 整數格平鋪＋捆綁字型墨水滿行高箱」保證；但 0.1.4
+   實測 webgl 字形圖集用久了會損壞導致畫面亂碼，權衡後**移除 addon 回到
+   DOM renderer**——黑縫是可預期的靜態瑕疵，亂碼是不可預期的功能故障，
+   取捨標準為正確性優先，詳見「畫面呈現」的 DOM renderer 條目。）
 4. **縱向拉長約 45%** — ✅ 已修（捆綁修正垂直度量的衍生字型 PTT Square Mono，
    見「畫面呈現」）。Noto Sans Mono CJK 的 hhea 行高 1.448em（ascender 1.16 +
    |descender| 0.288）遠大於全形字寬 1em，而 xterm 用 `measureText("W")` 的
@@ -336,6 +342,8 @@ Tango 色盤，P8 已修）；P8 修法的機械複驗（實錄重播＋逐格�
    為 2 格，字形會溢出右鄰格——這些字元不在 WHATWG big5 映射域內
    （已獨立枚舉驗證可達的 U+25xx 全在 WIDE_RANGES），PTT 串流送不出來，
    實務不可達；若未來真的出現，先想起這段再查。
+   （後記：0.1.4 移除 webgl addon 後 `customGlyphs` 已成 no-op，仍保留該設定
+   作為防禦，見「畫面呈現」的 DOM renderer 條目。）
 7. **未設 theme 的 Tango 色盤（第七根因）** — ✅ 已修（P8，2026-08-02：
    `src/terminal.ts` theme + `src/blink-overlay.ts` 色盤改值）。
    `new Terminal({...})` 從未設定 `theme`，一直用 xterm.js 預設的 Tango
@@ -354,7 +362,7 @@ Tango 色盤，P8 已修）；P8 修法的機械複驗（實錄重播＋逐格�
    零損傷，再以 headless Chrome 重播截圖對 ScreenGrid 語意網格逐格
    比對背景色，鎖定渲染層。
    注意（實測）：webgl 下以 `term.options.theme` 熱更新會殘留舊色
-   字形圖集，theme 必須在建構子給定。
+   字形圖集，theme 必須在建構子給定（0.1.4 已移除 webgl，此約束無害保留）。
 
 8. **合成粗體撐破字形圖集（第八根因）** — ✅ 已修（P10，2026-08-02：
    `src/terminal.ts` 加 `fontWeightBold: "normal"`，`src/duotone-overlay.ts`

@@ -1,6 +1,5 @@
 // xterm.js 初始化：固定 80x24 字元格；視窗縮放只調字型大小，不改行列數。
 import { Terminal } from "@xterm/xterm";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ANSI_16, BlinkOverlay, DEFAULT_BACKGROUND, DEFAULT_FOREGROUND } from "./blink-overlay";
@@ -28,24 +27,26 @@ export function createTerminal(
     fontFamily: `"${fontFamily}", monospace`,
     fontSize,
     // 呼叫端須確保 >= 1（config.ts 的 sanitizeLineHeight），xterm 對 < 1 會拋例外。
-    // > 1 時 cell 變高、字形在格內垂直置中（webgl 的 char.top），三個 overlay 都以
+    // > 1 時 cell 變高、字形在格內垂直置中，三個 overlay 都以
     // deviceH / rows 動態算格高故自動跟上；但方塊字形固定 1em，彩繪列間會露縫
     lineHeight,
     // 捆綁字型 PTT Square Mono 只有 Regular，SGR 1 會讓引擎「合成粗體」：字形被撐大
     // 後在字形圖集邊界被裁掉，滿格方塊的右緣與底緣各露一條 1px 暗線，彩繪整片變磁磚
-    // （第八根因，WebKitGTK／Blink 兩引擎實測相同；改為 normal 後接縫歸零）。
+    // （第八根因，當時的 GPU renderer 下 WebKitGTK／Blink 兩引擎實測相同；改為 normal
+    // 後接縫歸零。DOM renderer 無字形圖集，此值仍維持，理由見下）。
     // BBS 的 SGR 1 語意本來就是「選亮色」而非加粗，亮色映射由 drawBoldTextInBrightColors
     // （預設 true）負責，與本選項互不相干，改此值不影響顏色
     fontWeightBold: "normal",
     cursorBlink: true,
     scrollback: 0, // BBS 為全螢幕應用，畫面由 PTT 自行管理
     allowProposedApi: true, // term.unicode(自訂字寬 provider)是 proposed API
-    // webgl 的 customGlyphs 自繪一律只畫單格寬（addon-webgl 只把單格 deviceCellWidth
-    // 傳給 tryDrawCustomChar），而 PTT 的框線/方塊經 provider 報 2 格 → 右半格永遠
-    // 空白：分隔線 U+2500 成虛線、方塊彩繪梳齒碎裂（第六根因）。捆綁字型完整含
-    // U+2500–259F 全形字形（tests/font-coverage.test.ts 守門；方塊墨水滿行高箱為
+    // GPU renderer 的 customGlyphs 自繪一律只畫單格寬（addon-webgl 只把單格
+    // deviceCellWidth 傳給 tryDrawCustomChar），而 PTT 的框線/方塊經 provider 報 2 格
+    // → 右半格永遠空白：分隔線 U+2500 成虛線、方塊彩繪梳齒碎裂（第六根因）。捆綁字型
+    // 完整含 U+2500–259F 全形字形（tests/font-coverage.test.ts 守門；方塊墨水滿行高箱為
     // fonttools 一次性實測，回歸交手動 e2e），字型路徑的光柵化允許 2 格寬，
-    // 關閉自繪改與漢字同路徑滿版繪製
+    // 關閉自繪改與漢字同路徑滿版繪製。DOM renderer 不支援此選項故現為 no-op，
+    // 保留作為防禦：日後若再掛 GPU renderer，第六根因不會靜默回歸
     customGlyphs: false,
     // PTT 傳統 VGA 色盤（單一出處在 blink-overlay.ts，overlay 疊繪同表）：
     // xterm 預設 Tango 的「黑」#2e3436 與預設背景 #000000 不同色，SGR 40 黑底
@@ -76,18 +77,11 @@ export function createTerminal(
   term.unicode.register(new PttUnicodeProvider());
   term.unicode.activeVersion = PTT_UNICODE_VERSION;
   term.open(container);
-  // webgl renderer：DOM renderer 逐 <span> 排版，實心方塊在拼接處露出黑縫；
-  // webgl 以 glyph quad 整數格對齊平鋪無縫（customGlyphs 已停用，見上，字形一律
-  // 走字型光柵化）。純視覺強化：WebKitGTK 拿不到 WebGL context 時退回 DOM
-  // renderer（彩繪有細縫但功能完好），絕不中斷連線主流程
-  try {
-    const webgl = new WebglAddon();
-    // context 丟失（GPU 重置、驅動異常）即釋放，xterm 自動退回 DOM renderer
-    webgl.onContextLoss(() => webgl.dispose());
-    term.loadAddon(webgl);
-  } catch (error) {
-    console.warn("WebGL renderer 啟用失敗，退回 DOM renderer：", error);
-  }
+  // renderer 為 xterm 內建 DOM renderer。曾掛 @xterm/addon-webgl 消除實心方塊拼接處的
+  // 黑縫，但實測瀏覽一段時間後字形圖集（texture atlas）快取會損壞：畫面字形碎裂疊影，
+  // buffer 內容正常（縮放視窗改字型大小即重建圖集復原）。同一 renderer 在 VS Code
+  // 終端有同症狀（xtermjs/xterm.js#4061 的多頁圖集合併路徑；vscode#174399、#287584）。
+  // 取捨：DOM renderer 逐 <span> 排版，彩繪有細縫但永不亂碼——正確性優先於無縫
   // 雙色字疊繪須先掛載（同 z-index 下後掛載者在上），blink 的 off 相位才蓋得住雙色字
   new DuotoneOverlay(term); // 雙色字：拆成 PUA 半字存 buffer，由 overlay 繪回左右異色字形
   new BlinkOverlay(term); // 簽名檔閃爍字：xterm 不渲染 SGR 5，由 overlay 補動畫
