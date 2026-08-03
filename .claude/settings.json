@@ -29,8 +29,9 @@
     "deny": [
       "Read(~/.config/ptt-desktop/**)",
       "Edit(~/.config/ptt-desktop/**)",
-      "Edit(.claude/settings*)",
-      "Edit(.github/workflows/**)",
+      "Edit(/.claude/settings*)",
+      "Edit(/.claude/harness/hooks/**)",
+      "Edit(/.github/workflows/**)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)"
     ]

@@ -15,7 +15,7 @@
 終端畫面，透過 PTT 官方 WebSocket 端點 `wss://ws.ptt.cc/bbs` 連線。
 支援 Linux / macOS / Windows。
 
-![畫面](https://cdn.imgpile.com/f/jHdKrEi_xl.png)
+![畫面](https://cdn.imgpile.com/f/8zn1iB5_xl.png)
 
 ## 設計目標：輕量、快
 
@@ -116,6 +116,16 @@ npm run tauri build  # 打包
 
 架構與實作細節（WebSocket 端點、telnet 濾層、Big5→UTF-8 切換、
 自動登入狀態機、overlay 渲染）見 [技術文件](docs/architecture.md)。
+
+## AI 開發流程（Harness）
+
+本專案用 Claude Code 開發，工作流固定在 `.claude/`：
+`/harness-plan` 把需求拆成 `Plans.md` 任務 → `/harness-work` 實作並跑
+preflight（quality / build / test）→ 獨立 reviewer 審查通過才 commit。
+安全 invariant（自動登入絕不重試、帳密不進 log）與「輕量、不加依賴」
+的取捨標準寫在規範裡，由 reviewer 逐條把關。
+
+完整說明見 [Harness 使用說明](docs/harness-guide.md)。
 
 ## License
 
