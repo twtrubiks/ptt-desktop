@@ -33,6 +33,14 @@
 | `/harness-plan create 加上巷口留言板功能` | 需求梳理成任務（最多問你 3 個問題） |
 | `/harness-plan add 修正 F11 全螢幕在 KDE 下的閃爍` | 快速補一個小任務 |
 | `/harness-plan sync` | 比對 git log 與 Plans.md，找出漏標/錯標 |
+| `/harness-plan archive` | 已完成任務搬進 `docs/plans-archive.md`，Plans.md 只留索引表 |
+
+**關於封存**：harness 只會往 Plans.md 加東西，不會回收，放著就單調變長；成本不是磁碟
+（幾十 KB 而已）而是 context——每次跑 plan/work 都會完整讀它。所以 `create` 開新一輪前會
+自動檢查（超過 200 行或累積 5 個 `cc:DONE`），該封存就先封存。**封存不是刪除**：任務原文
+逐字搬進 `docs/plans-archive.md`，Plans.md 留一列「標題 + 定案結論 + commit」的索引，
+要細節再去翻全文。刻意不綁在 `/harness-work` 做完時封存——剛完成的任務常還有手動驗證
+沒做完，可能回頭改。
 
 ### `/harness-work` — 實作
 
@@ -113,7 +121,8 @@ CLAUDE.md 的 invariant 是給 AI 的紀律，不是給你的。
 
 ```
 CLAUDE.md                        # AI 的專案說明書（invariant、DoD、慣例）
-Plans.md                         # 任務 SSOT
+Plans.md                         # 任務 SSOT（活任務 + 已封存任務索引）
+docs/plans-archive.md            # 已完成任務全文（封存）
 docs/harness-guide.md            # 本文件（給人看的使用說明）
 .claude/
 ├── settings.json                # 權限 allow/ask/deny + hooks 配線（AI 不可改）
