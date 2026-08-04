@@ -238,7 +238,7 @@ export class ScreenGrid {
       return;
     }
     if (b === 0x0a) {
-      this.row = Math.min(ROWS - 1, this.row + 1); // PTT 全螢幕不捲動，夾住即可
+      this.lineFeed();
       this.leadIdx = -1;
       return;
     }
@@ -348,9 +348,37 @@ export class ScreenGrid {
 
   private wrapIfNeeded(width: number): void {
     if (this.col + width > COLS) {
-      this.row = Math.min(ROWS - 1, this.row + 1);
+      this.lineFeed();
       this.col = 0;
     }
+  }
+
+  // LF／自動換行：末列時整個網格上捲一列（xterm lineFeed 在 scrollBottom 呼叫
+  // bufferService.scroll，scrollback:0 → 捲出的列直接丟棄）。PTT 往下捲頁正是
+  // 「CUP 到 24 列 + 連續 LF」，shadow 若夾住不捲，兩模型會整段錯列，
+  // 其後的孤兒判定全部落在舊畫面上（實錄：畫面首欄被補出憑空半字）
+  private lineFeed(): void {
+    if (this.row < ROWS - 1) {
+      this.row++;
+      return;
+    }
+    this.glyphs.copyWithin(0, COLS);
+    this.halves.copyWithin(0, COLS);
+    this.bytes.copyWithin(0, COLS);
+    this.sgrs.copyWithin(0, COLS);
+    for (let i = (ROWS - 1) * COLS; i < ROWS * COLS; i++) {
+      this.glyphs[i] = " ";
+      this.halves[i] = 0;
+      this.bytes[i] = -1;
+      this.sgrs[i] = this.sgr; // BCE：與 erase() 同樣以當前屬性清
+    }
+    // 內容整體上移，待補寫的孤兒索引與掛起的 lead 同步平移；捲出畫面者作廢
+    if (this.dirty.size > 0) {
+      const moved = new Set<number>();
+      for (const i of this.dirty) if (i >= COLS) moved.add(i - COLS);
+      this.dirty = moved;
+    }
+    this.leadIdx = this.leadIdx >= COLS ? this.leadIdx - COLS : -1;
   }
 
   private putNarrow(ch: string, sgr: number): void {

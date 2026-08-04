@@ -359,6 +359,58 @@ describe("補寫遞延（批末不可注入時 dirty 跨批累積）", () => {
   });
 });
 
+// PTT 往下捲頁的文法是「CUP 到第 24 列 + 連續 LF」（實錄 rec-2026-08-04T01-16-52）。
+// xterm 的 lineFeed 在 scrollBottom 會呼叫 bufferService.scroll（scrollback:0 → 捲出即丟），
+// shadow 若夾住不捲，兩模型整段錯列，其後孤兒判定全落在舊畫面
+describe("末列捲動（與 xterm lineFeed 同步）", () => {
+  it("末列 LF：內容整體上移一列，末列以當前屬性清空", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[1;1H第一列\x1b[2;1H第二列\x1b[41m\x1b[24;1H末列");
+    feedText(grid, "\n");
+    expect(grid.cursor).toEqual({ row: 23, col: 4 }); // 仍在末列，col 不因 LF 改變
+    expect(grid.rowText(0)).toContain("第二列"); // 原第 1 列上移，第 0 列捲出畫面
+    expect(grid.rowText(22)).toContain("末列");
+    expect(grid.rowText(23).trim()).toBe("");
+    expect(grid.cellAt(23, 0).bg).toBe(1); // BCE：新列沿用當前背景色
+  });
+
+  it("末列寫滿後自動換行同樣觸發捲動", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[1;1H頂\x1b[24;80HA");
+    feedText(grid, "B"); // 行尾虛位再寫一字 → 換行並捲動
+    expect(grid.rowText(0).trim()).toBe("");
+    expect(grid.rowText(22)).toContain("A");
+    expect(grid.rowText(23).startsWith("B")).toBe(true);
+    expect(grid.cursor).toEqual({ row: 23, col: 1 });
+  });
+
+  it("回歸：捲動後半字位置同步平移，孤兒回報落在平移後的列（實錄 2026-08-04）", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[23;1H但因為\x1b[24;1H");
+    feedText(grid, "\n"); // 末列 LF → 整體上捲，「但因為」由第 23 列移到第 22 列
+    expect(grid.cellAt(21, 0)).toMatchObject({ glyph: "但", half: 1, paired: true });
+    // PTT 重繪捲動後的畫面時從第 2 欄起寫（首欄它認定已是空白）
+    const repairs = feedText(grid, "\x1b[22;2H778800");
+    expect(repairs.map((r) => `${r.row}|${r.col}|${r.glyph}|${r.side}`)).toEqual(["21|0|但|left"]);
+  });
+
+  it("遞延中的孤兒隨捲動平移列號後才補寫", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[2;1H雨");
+    expect(grid.feed(enc.encode("\x1b[2;1H \x1b[3")).repairs).toEqual([]); // 批末在 CSI 中途 → 遞延
+    const r = grid.feed(enc.encode("1m\x1b[24;1H\n")); // 補完序列後捲動一列
+    expect(r.repairs).toHaveLength(1);
+    expect(r.repairs[0]).toMatchObject({ row: 0, col: 1, glyph: "雨", side: "right" });
+  });
+
+  it("捲出畫面的待補孤兒作廢，不補寫到已不存在的內容", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[1;1H雨");
+    expect(grid.feed(enc.encode("\x1b[1;1H \x1b[3")).repairs).toEqual([]); // 遞延
+    expect(grid.feed(enc.encode("1m\x1b[24;1H\n")).repairs).toEqual([]); // 第 1 列已捲出
+  });
+});
+
 describe("fixture 重放（期望值經獨立 Python 實作交叉驗證）", () => {
   const chunks = loadFixtureChunks();
 
