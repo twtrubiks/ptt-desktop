@@ -411,6 +411,56 @@ describe("末列捲動（與 xterm lineFeed 同步）", () => {
   });
 });
 
+// PTT 往上捲頁的文法是「ESC[24;1H ESC[J ESC[H ESC M」（實錄
+// rec-2026-08-04T03-11-28，37 次），與末列 LF 的往下捲頁互為鏡像。
+// xterm 的 reverseIndex 在 scrollTop 會 shiftElements 下移並插入新行
+describe("反向索引 ESC M（與 xterm reverseIndex 同步）", () => {
+  it("頂列 RI：內容整體下移一列，頂列以當前屬性清空", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[1;1H第一列\x1b[24;1H末列\x1b[41m\x1b[1;1H");
+    feedText(grid, "\x1bM");
+    expect(grid.cursor).toEqual({ row: 0, col: 0 }); // 游標留在頂列
+    expect(grid.rowText(1)).toContain("第一列");
+    expect(grid.rowText(0).trim()).toBe("");
+    expect(grid.cellAt(0, 0).bg).toBe(1); // BCE：新列沿用當前背景色
+    expect(grid.rowText(23).trim()).toBe(""); // 原末列被擠出畫面
+  });
+
+  it("非頂列 RI：只把游標上移一列，內容不動", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[5;3H雨\x1b[3;1H");
+    feedText(grid, "\x1bM");
+    expect(grid.cursor).toEqual({ row: 1, col: 0 });
+    expect(grid.cellAt(4, 2)).toMatchObject({ glyph: "雨", half: 1, paired: true });
+  });
+
+  it("回歸：上捲頁後半字位置同步下移，孤兒回報落在下移後的列（實錄 2026-08-04）", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[3;1H房價");
+    feedText(grid, "\x1b[24;1H\x1b[J\x1b[H\x1bM"); // PTT 上捲頁文法：畫面整體下移一列
+    expect(grid.cellAt(3, 0)).toMatchObject({ glyph: "房", half: 1, paired: true });
+    // PTT 重繪時只從第 2 欄起寫（首欄它認定已是空白）
+    const repairs = feedText(grid, "\x1b[4;2H778786");
+    expect(repairs.map((r) => `${r.row}|${r.col}|${r.glyph}|${r.side}`)).toEqual(["3|0|房|left"]);
+  });
+
+  it("遞延中的孤兒隨 RI 下移列號後才補寫", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[2;1H雨");
+    expect(grid.feed(enc.encode("\x1b[2;1H \x1b[3")).repairs).toEqual([]); // 批末在 CSI 中途 → 遞延
+    const r = grid.feed(enc.encode("1m\x1b[1;1H\x1bM"));
+    expect(r.repairs).toHaveLength(1);
+    expect(r.repairs[0]).toMatchObject({ row: 2, col: 1, glyph: "雨", side: "right" });
+  });
+
+  it("被擠出畫面底的待補孤兒作廢", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[24;1H雨");
+    expect(grid.feed(enc.encode("\x1b[24;1H \x1b[3")).repairs).toEqual([]); // 遞延
+    expect(grid.feed(enc.encode("1m\x1b[1;1H\x1bM")).repairs).toEqual([]); // 第 24 列已被擠出
+  });
+});
+
 describe("fixture 重放（期望值經獨立 Python 實作交叉驗證）", () => {
   const chunks = loadFixtureChunks();
 

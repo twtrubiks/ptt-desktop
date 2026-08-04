@@ -208,11 +208,16 @@ export class ScreenGrid {
 
   private step(b: number): void {
     if (this.escState === ST_ESC) {
-      // 非 CSI 的 ESC 序列視為兩 byte 結束——PTT 實錄的 VT 子集只有 CSI。
-      // 注意：本狀態機不認得 OSC/DCS/APC 等字串序列；若未來串流真的出現，
-      // 須先擴充這裡再依賴 injectSafe（否則批末誤判安全、補寫劈進序列中途）
+      // 非 CSI 的 ESC 序列視為兩 byte 結束——PTT 實錄的 VT 子集除 CSI 外只有
+      // ESC M（RI，文章往上捲頁）。注意：本狀態機不認得 OSC/DCS/APC 等字串序列；
+      // 若未來串流真的出現，須先擴充這裡再依賴 injectSafe（否則批末誤判安全、
+      // 補寫劈進序列中途）
       this.escState = b === 0x5b ? ST_CSI : ST_TEXT;
       if (this.escState === ST_CSI) this.csiParams = "";
+      else if (b === 0x4d) {
+        this.reverseIndex();
+        this.leadIdx = -1;
+      }
       return;
     }
     if (this.escState === ST_CSI) {
@@ -366,19 +371,49 @@ export class ScreenGrid {
     this.halves.copyWithin(0, COLS);
     this.bytes.copyWithin(0, COLS);
     this.sgrs.copyWithin(0, COLS);
-    for (let i = (ROWS - 1) * COLS; i < ROWS * COLS; i++) {
+    this.clearRow((ROWS - 1) * COLS);
+    this.shiftPending(-COLS);
+  }
+
+  // RI（ESC M）：頂列時整個網格下捲一列（xterm reverseIndex 在 scrollTop 會
+  // shiftElements 把行下移、頂端插入新行）。PTT 文章往上捲頁的文法是
+  // 「ESC[24;1H ESC[J ESC[H ESC M」，與末列 LF 的往下捲頁互為鏡像；
+  // 漏掉任一邊，shadow 都會停在舊畫面而把捲走的半字補寫到新畫面上
+  private reverseIndex(): void {
+    if (this.row > 0) {
+      this.row--;
+      return;
+    }
+    const span = (ROWS - 1) * COLS;
+    this.glyphs.copyWithin(COLS, 0, span);
+    this.halves.copyWithin(COLS, 0, span);
+    this.bytes.copyWithin(COLS, 0, span);
+    this.sgrs.copyWithin(COLS, 0, span);
+    this.clearRow(0);
+    this.shiftPending(COLS);
+  }
+
+  private clearRow(base: number): void {
+    for (let i = base; i < base + COLS; i++) {
       this.glyphs[i] = " ";
       this.halves[i] = 0;
       this.bytes[i] = -1;
       this.sgrs[i] = this.sgr; // BCE：與 erase() 同樣以當前屬性清
     }
-    // 內容整體上移，待補寫的孤兒索引與掛起的 lead 同步平移；捲出畫面者作廢
+  }
+
+  // 捲動後待補寫的孤兒索引與掛起的 lead 隨內容平移；移出畫面者作廢
+  private shiftPending(delta: number): void {
     if (this.dirty.size > 0) {
       const moved = new Set<number>();
-      for (const i of this.dirty) if (i >= COLS) moved.add(i - COLS);
+      for (const i of this.dirty) {
+        const j = i + delta;
+        if (j >= 0 && j < ROWS * COLS) moved.add(j);
+      }
       this.dirty = moved;
     }
-    this.leadIdx = this.leadIdx >= COLS ? this.leadIdx - COLS : -1;
+    const lead = this.leadIdx + delta;
+    this.leadIdx = this.leadIdx >= 0 && lead >= 0 && lead < ROWS * COLS ? lead : -1;
   }
 
   private putNarrow(ch: string, sgr: number): void {
