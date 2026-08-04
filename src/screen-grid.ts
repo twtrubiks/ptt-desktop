@@ -81,6 +81,15 @@ const ST_TEXT = 0;
 const ST_ESC = 1;
 const ST_CSI = 2;
 
+// 未知序列樣態上限：dev 診斷用，只要看得到「有哪幾種」就夠，不必無上限累積
+const MAX_UNKNOWN = 16;
+
+function seqName(prefix: string, b: number): string {
+  const ch =
+    b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : `0x${b.toString(16).padStart(2, "0")}`;
+  return `${prefix} ${ch}`;
+}
+
 export class ScreenGrid {
   private glyphs: string[] = Array.from({ length: ROWS * COLS }, () => " ");
   private halves = new Uint8Array(ROWS * COLS);
@@ -107,6 +116,12 @@ export class ScreenGrid {
 
   private dirty = new Set<number>();
   private big5 = new TextDecoder("big5");
+
+  /** 本狀態機未實作、xterm 卻會處理的序列樣態（如捲動類的 ESC M）。兩次「畫面
+   *  憑空多半個字」都源自這種漏網序列造成的 shadow／畫面錯列，故留此診斷面：
+   *  main.ts 在 dev 模式印出，`scripts/replay-check.mjs` 對實錄一併把關。
+   *  reset() 不清空——診斷價值在整個 session 累積 */
+  readonly unknownSequences = new Set<string>();
 
   /** 餵一批下行 bytes（telnet 濾層後），回傳轉發串流（BS@80 正規化）與可補寫孤兒 */
   feed(data: Uint8Array): FeedResult {
@@ -217,7 +232,7 @@ export class ScreenGrid {
       else if (b === 0x4d) {
         this.reverseIndex();
         this.leadIdx = -1;
-      }
+      } else this.noteUnknown(seqName("ESC", b));
       return;
     }
     if (this.escState === ST_CSI) {
@@ -255,7 +270,12 @@ export class ScreenGrid {
       this.leadIdx = -1;
       return;
     }
-    if (b < 0x20 || b === 0x7f) return; // 其餘 C0（BEL 等）忽略，不動配對狀態
+    if (b < 0x20 || b === 0x7f) {
+      // NUL／BEL／DEL 在 xterm 也不影響畫面；其餘 C0（HT/VT/FF/SO/SI…）xterm
+      // 有實作而這裡沒有（VT/FF 在 xterm 等同 LF，會捲動），記下來供診斷
+      if (b !== 0x00 && b !== 0x07 && b !== 0x7f) this.noteUnknown(seqName("C0", b));
+      return;
+    }
     if (this.utf8Mode) this.stepUtf8(b);
     else this.stepBig5(b);
   }
@@ -520,8 +540,15 @@ export class ScreenGrid {
         this.applySgr();
         break;
       default:
-        break; // 其餘 CSI 對網格無影響，吃掉
+        // 其餘 CSI 吃掉（PTT 實錄只送 m/H/K/J）。只記 final byte：參數帶進來
+        // 樣態會爆炸，而「哪一類 CSI 沒實作」看 final 就夠判斷
+        this.noteUnknown(seqName("CSI", final.charCodeAt(0)));
+        break;
     }
+  }
+
+  private noteUnknown(name: string): void {
+    if (this.unknownSequences.size < MAX_UNKNOWN) this.unknownSequences.add(name);
   }
 
   private erase(from: number, to: number): void {

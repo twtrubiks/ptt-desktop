@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "replay:check": "node --import ./scripts/ts-loader.mjs scripts/replay-check.mjs",
     "tauri": "tauri",
     "lint": "oxlint src tests",
     "format": "prettier --write \"src/**/*.{ts,css}\" \"tests/**/*.ts\" \"*.{json,ts,js,html}\"",

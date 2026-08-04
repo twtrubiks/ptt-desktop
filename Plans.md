@@ -115,10 +115,44 @@ ESC 序列整個吃掉 → 與 P12 完全同構的錯列。第二份錄檔 `ESC 
 
 **DoD：** quality ✓ / build ✓ / test ✓（171 項）；真人複驗見 e2e-checklist。
 
-**未做的後續（待使用者裁決，見對話）：** ①ScreenGrid 記錄未知 VT 序列、dev
-模式 warn（唯一能把同類坑提前暴露的做法）②把重播 harness 固化成 npm script
-③孤兒補寫的失敗模式保守化（不確定時留白，而非憑空補字）。
+---
+
+### P14 — 防同類再犯：未實作序列偵測 + 實錄回歸工具  `cc:DONE`
+
+**目標：** 下次 PTT 送來我們沒實作的終端序列時，在 dev console 與回歸工具立刻
+現形，而不是等使用者截圖回報（P12／P13 是同一機制被咬兩次）。
+
+**變更範圍：**
+- [x] src/screen-grid.ts — `unknownSequences`（未實作的 ESC／CSI／C0 樣態，
+      上限 16 筆）；CSI 只記 final byte 避免隨參數爆炸
+- [x] src/main.ts — dev 模式下新樣態出現即 `console.warn`
+- [x] scripts/replay-check.mjs + scripts/ts-loader.mjs — 錄檔走真管線重播 +
+      xterm 語意畫面重建，四項判定：shadow 未實作序列、模擬器未實作序列、
+      同一列連續分歧 ≥10 幀、補寫蓋掉既有內容
+- [x] package.json — `npm run replay:check -- recordings/*.jsonl [--dump]`
+- [x] tests/screen-grid.test.ts — 偵測面 3 項（已實作序列不入列、
+      ESC/CSI/C0 各自入列、樣態數有上限）
+- [x] docs/architecture.md、CLAUDE.md — 工具用法與判定依據
+
+**為何模擬器也要偵測未實作序列：** P13 定位時模擬器自己也漏了 `ESC M`，於是
+與 shadow「一致地錯」，兩模型比對顯示 0 分歧卻仍有殘字。只比對兩模型會得到
+假綠燈，這條判定就是防它。
+
+**閾值依據（實測）：** 同一列連續分歧幀數，兩份錄檔正常時最長 2 幀（補寫遞延
+的暫態）；把 RI 分支停用重跑則達 92 幀。取 10 為界。
+「最終畫面比對」不能當主判準——全螢幕重繪會讓兩模型收斂（停用 RI 版最終比對
+仍是 0 列不一致）。
+
+**驗證：** 停用 RI 分支重跑 `replay:check` → 正確 FAIL 並指出 `ESC M`；
+還原後兩份錄檔皆 PASS。3 項新測試。
+
+**DoD：** quality ✓ / build ✓ / test ✓（174 項）。錄檔含個資不進 repo，
+`replay:check` 不列入 CI 的 DoD。
+
+**未做（保留給下次裁決）：** 孤兒補寫的失敗模式保守化——不確定時留白而非憑空
+補字。目前失敗模式是「憑空多半個字」，最刺眼；代價是真實破洞的修復率下降，
+要重新評估補寫規則，故暫不動。
 
 ---
 
-目前無進行中任務。新任務編號從 P14 接續。
+目前無進行中任務。新任務編號從 P15 接續。

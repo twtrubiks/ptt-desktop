@@ -31,6 +31,7 @@ async function init(): Promise<void> {
   const recorder = import.meta.env.DEV ? new DevRecorder() : null;
   let autoLogin: AutoLogin | null = null;
   let awaitingReconnect = false;
+  let unknownSeen = 0; // dev：shadow 未實作的終端序列，出現即警告（見下方 onBinary）
 
   const conn = new PttConnection({
     onBinary(data) {
@@ -42,6 +43,12 @@ async function init(): Promise<void> {
       autoLogin?.feedBytes(filtered);
       // shadow 觀察同點 bytes；下游改吃 output（BS@80 已正規化為絕對 CUP）
       const { output, repairs } = grid.feed(filtered);
+      // shadow 漏掉 xterm 會處理的序列 → 兩模型錯列 → 孤兒補寫落到錯的位置
+      // （2026-08-04 兩次殘字事故的共同機制）。dev 立即警告，別再等使用者回報
+      if (import.meta.env.DEV && grid.unknownSequences.size > unknownSeen) {
+        unknownSeen = grid.unknownSequences.size;
+        console.warn(`[screen-grid] 未實作的終端序列：${[...grid.unknownSequences].join(" ")}`);
+      }
       const text = duotone.process(codec.decode(reorder.process(output)));
       term.write(text);
       // 批末仍存活的孤兒半字（xterm 端整格已被原子清空）以 PUA 半字補寫回去，

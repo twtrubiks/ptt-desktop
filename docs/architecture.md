@@ -548,8 +548,22 @@ fixture 格式（`tests/fixtures/mainmenu-utf8.bin`，守門測試
   錯相疊寫、動畫文法、EL 切 pair、行尾邊界）、SGR 劈字左右半異色、
   跨 chunk 狀態機（UTF-8 逐 byte 切割、CSI 跨批、big5 lead/trail 跨批）、
   big5 模式配對與孤兒、游標運動夾限、BS@80 正規化（含跨批與零拷貝）、
-  補寫遞延（批末序列中途／行尾虛位、遞延期間自癒）、fixture 重放
-  （期望值經獨立 Python 實作交叉驗證）、效能 sanity
+  補寫遞延（批末序列中途／行尾虛位、遞延期間自癒）、捲動（末列 LF 上捲、
+  `ESC M` 下捲、捲動後孤兒列號平移與移出畫面作廢）、未實作序列偵測、
+  fixture 重放（期望值經獨立 Python 實作交叉驗證）、效能 sanity
+
+實錄回歸驗證（單元測試碰不到的部分）：
+
+```bash
+npm run replay:check -- recordings/rec-*.jsonl [--dump]
+```
+
+`scripts/replay-check.mjs` 把 dev 錄檔走真管線重播，並以 xterm 語意的 80×24
+模擬器重建使用者實際看到的畫面，檢查四件事：shadow 未實作的終端序列、
+模擬器未實作的序列（模擬器自己漏掉時會與 shadow「一致地錯」，只比對兩模型
+會得到假綠燈）、同一列連續分歧幀數（正常 ≤2、錯列時 92）、孤兒補寫有沒有
+蓋掉畫面既有內容。改 `screen-grid` / `sgr-reorder` / `codec` / `duotone` 後跑一次。
+錄檔含個資不進 repo，工具進 repo；沒有錄檔時此檢查跳過，不屬 CI 的 DoD
 - `auto-login.test.ts`：以錄製的真實登入畫面文字腳本餵入驗證狀態機；
   密碼錯誤路徑餵 Big5 位元組驗證位元組層比對（含跨 chunk 切割）
 - `hotkeys.test.ts`：保留鍵、修飾鍵放行、快捷鍵展開

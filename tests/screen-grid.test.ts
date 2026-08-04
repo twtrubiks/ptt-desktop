@@ -461,6 +461,29 @@ describe("反向索引 ESC M（與 xterm reverseIndex 同步）", () => {
   });
 });
 
+// 兩次「畫面憑空多半個字」都是 shadow 漏掉 xterm 會處理的序列造成錯列。
+// 偵測面讓同類漏網在 dev console 與 scripts/replay-check.mjs 立刻現形
+describe("未實作序列偵測", () => {
+  it("已實作的序列不入列（CSI m/H/K/J、ESC M、BS/CR/LF、NUL/BEL/DEL）", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b[1;1H\x1b[31m字\x1b[K\x1b[2J\x1b[3;5H\x1bM\r\n\x08");
+    grid.feed(Uint8Array.from([0x00, 0x07, 0x7f]));
+    expect([...grid.unknownSequences]).toEqual([]);
+  });
+
+  it("未實作的 ESC／CSI／C0 各自入列（CSI 只記 final byte，不隨參數爆炸）", () => {
+    const grid = utf8Grid();
+    feedText(grid, "\x1b7\x1b[?25l\x1b[?12l\x1b[6n\x0c");
+    expect([...grid.unknownSequences]).toEqual(["ESC 7", "CSI l", "CSI n", "C0 0x0c"]);
+  });
+
+  it("樣態數有上限，異常串流不會無限累積", () => {
+    const grid = utf8Grid();
+    for (let i = 0; i < 40; i++) feedText(grid, `\x1b[${String.fromCharCode(0x40 + i)}`);
+    expect(grid.unknownSequences.size).toBeLessThanOrEqual(16);
+  });
+});
+
 describe("fixture 重放（期望值經獨立 Python 實作交叉驗證）", () => {
   const chunks = loadFixtureChunks();
 

@@ -44,6 +44,7 @@ npm run tauri dev      # 完整桌面 app
 npm run quality        # format:check + oxlint + stylelint + cargo fmt check + clippy
 npm run build          # tsc + vite build
 npm test               # vitest run
+npm run replay:check -- recordings/rec-*.jsonl   # 對本機錄檔重播驗畫面（改 screen-grid 等模組後跑）
 ```
 
 ## DoD（與 .github/workflows/ci.yml 完全一致）
