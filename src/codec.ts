@@ -1,4 +1,5 @@
-// 兩階段解碼：登入前 big5，自動登入狀態機送出密碼後切換 utf-8（見 docs/architecture.md）。
+// 兩階段解碼：登入前 big5，自動登入狀態機偵測到伺服器切換後改 utf-8
+// （切換時機新舊 PTT 不同，見 docs/architecture.md「編碼」）。
 // TextDecoder 的 stream 模式原生處理多位元組字跨 frame 切割；
 // 非法位元組以 U+FFFD 替代顯示（non-fatal 預設行為），串流不中斷。
 export class PttDecoder {

@@ -4,7 +4,7 @@
 // 同時餵給自動登入狀態機。
 // 上行：xterm.onData →（快捷鍵層在 key event 階段先攔）→ UTF-8 binary 送出。
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AutoLogin, WRONG_PASSWORD_DETAIL } from "./auto-login";
+import { AutoLogin } from "./auto-login";
 import { PttDecoder } from "./codec";
 import { loadConfig } from "./config";
 import { PttConnection } from "./connection";
@@ -37,10 +37,11 @@ async function init(): Promise<void> {
     onBinary(data) {
       const filtered = telnet.filter(data);
       if (filtered.length === 0) return;
-      recorder?.push(filtered); // 錄製與位元組層比對都收正規化前的原始 bytes
-      // 位元組層先餵：密碼錯時偵測到會（在 onFinished 內）把 codec 與 reorder 撥回
-      // big5，本 chunk 隨後就以正確編碼配對、解碼，亂碼不會先上畫面
+      // 位元組層先餵（且在錄製 push 前）：偵測到 UTF-8 密碼提示會先切 utf-8、
+      // 偵測到 Big5「密碼不對」會先撥回 big5，本 chunk 隨後就以正確編碼配對、
+      // 解碼，亂碼不會先上畫面；mark 也因此落在本 chunk 之前，replay 才能還原同樣時序
       autoLogin?.feedBytes(filtered);
+      recorder?.push(filtered); // 錄製與位元組層比對都收正規化前的原始 bytes
       // shadow 觀察同點 bytes；下游改吃 output（BS@80 已正規化為絕對 CUP）
       const { output, repairs } = grid.feed(filtered);
       // shadow 漏掉 xterm 會處理的序列 → 兩模型錯列 → 孤兒補寫落到錯的位置
@@ -79,7 +80,7 @@ async function init(): Promise<void> {
         send: (text) => conn.sendText(text),
         onSwitchUtf8: () => {
           recorder?.mark("utf8-switch"); // 標記之後的錄製 chunk 屬 utf-8 串流
-          grid.switchToUtf8(); // shadow 與 codec 同時機切換（送出密碼後）
+          grid.switchToUtf8(); // shadow 與 codec 同時機切換（時機由 auto-login 位元組層偵測）
           // reorder 的殘留 bytes 屬 big5 串流,須趕在 codec 切換前解碼;
           // 兩段殘留都過 duotone 濾層,維持與主管線相同的處理順序
           const residue = reorder.switchToUtf8();
@@ -87,18 +88,20 @@ async function init(): Promise<void> {
           const tail = codec.switchToUtf8();
           if (tail) term.write(duotone.process(tail));
         },
+        onResetBig5: () => {
+          // Big5「密碼不對」位元組命中＝伺服器仍在 Big5（舊版行為的密碼錯畫面），
+          // 撥回 big5 讓本 chunk 與後續手動操作畫面可讀；新版 UTF-8 的密碼錯由
+          // 文字比對命中、不走此路，維持 utf-8。
+          // reorder 殘留的少量 bytes 直接丟棄：錯誤畫面隨後會重繪，不值得為此倒序解碼
+          recorder?.mark("big5-reset"); // 標記之後的錄製 chunk 回到 big5 串流
+          codec.reset();
+          reorder.reset();
+          duotone.reset();
+          grid.reset(); // shadow 一併回 big5、清網格；後續重繪會重建
+        },
         onFinished: (reason, detail) => {
           autoLogin = null;
           if (reason === "aborted") {
-            // 密碼錯時 PTT 從未切到 UTF-8，撥回 big5 讓後續手動操作畫面可讀；
-            // 其他中止原因（如登入成功後主功能表字樣不符）不能撥，PTT 可能已在 UTF-8。
-            // reorder 殘留的少量 bytes 直接丟棄：錯誤畫面隨後會重繪，不值得為此倒序解碼
-            if (detail === WRONG_PASSWORD_DETAIL) {
-              codec.reset();
-              reorder.reset();
-              duotone.reset();
-              grid.reset(); // shadow 一併回 big5、清網格；後續重繪會重建
-            }
             term.write(`\r\n\x1b[1;33m[自動登入中止（${detail ?? "未知原因"}），請手動操作]\x1b[m`);
           }
         },

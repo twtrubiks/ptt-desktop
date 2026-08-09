@@ -43,9 +43,9 @@ ptt-desktop/
 wss binary frame → tauri-plugin-websocket (Rust, 帶 Origin header)
   → telnet.ts 濾掉 IAC 與 HTTP 前導
   → screen-grid.ts byte 網格 shadow 觀察＋BS@80 正規化（見「byte 網格語意規格」；
-    自動登入的位元組層「密碼不對」比對與 dev 錄製都收正規化前的原始 bytes）
+    自動登入的位元組層比對（編碼切換點偵測）與 dev 錄製都收正規化前的原始 bytes）
   → sgr-reorder.ts 把插在字中間的 SGR 搬到字後、包 APC 區段（雙色字，見「彩繪修正層」）
-  → codec.ts 解碼（登入前 big5、送出密碼後 utf-8）
+  → codec.ts 解碼（登入前 big5，auto-login 偵測伺服器切換後 utf-8，見「編碼」）
   → duotone.ts 把 APC 區段改寫成「左半 PUA + SGR + 右半 PUA」（保留雙色）
   → xterm.write()（自動登入狀態機的 pattern matching 餵解碼後文字）
   → 批末若有仍存活的孤兒半字，接著寫入補寫序列（duotone.buildOrphanRepair）
@@ -82,12 +82,22 @@ xterm keydown → hotkeys.ts（命中快捷鍵展開為指令序列，否則放�
 ## 編碼（`src/codec.ts`）
 
 PTT 登入前的畫面是 Big5(-UAO)；登入帳號後面加逗號（`id,`）可切換為 UTF-8 輸出,
-實測切換點在串流中間：送出帳號後的「請輸入您的密碼:」仍是 Big5，
-其後的輸出即為合法 UTF-8。因此：
+切換點在串流中間，且新舊 PTT 行為不同（兩者皆需相容）：
 
-- `PttDecoder` 先用 `TextDecoder('big5', {stream: true})`，
-  自動登入狀態機送出密碼後呼叫 `switchToUtf8()` 換成
-  `TextDecoder('utf-8', {stream: true})`
+- 舊版（2026-07 實測）：送出帳號後的「請輸入您的密碼:」仍是 Big5，
+  送出密碼後的輸出才是合法 UTF-8；密碼錯時從未切換、整段維持 Big5
+- 新版（2026-08-09 實錄 `rec-2026-08-09T03-34-21-072Z`）：伺服器收到「id,」後
+  **立即**切換，「請輸入您的密碼:」已是 UTF-8 位元組
+
+因此切換點由 auto-login.ts 在解碼前的位元組層偵測驅動：
+
+- `PttDecoder` 先用 `TextDecoder('big5', {stream: true})`；auto-login 於位元組層
+  看到 UTF-8「請輸入您的密碼」即觸發 `switchToUtf8()` 換成
+  `TextDecoder('utf-8', {stream: true})`（新版：搶在該 chunk 解碼前切，
+  提示不上亂碼、文字比對照常送密碼），否則於送出密碼後切換（舊版）
+- 密碼錯的撥回決策同理看命中層：Big5「密碼不對」位元組命中（舊版）→
+  onResetBig5 撥回 big5 讓錯誤畫面可讀；UTF-8 文字「密碼不對」命中（新版）→
+  維持 utf-8
 - 切換時 flush 舊 decoder，殘留的半個 big5 字以 U+FFFD 呈現並寫入畫面，
   避免位元組被靜默丟棄
 - 多位元組字跨 frame 切割由 TextDecoder 的 stream 模式原生處理；
