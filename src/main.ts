@@ -21,6 +21,13 @@ async function init(): Promise<void> {
   const container = document.querySelector<HTMLElement>("#terminal");
   if (!container) throw new Error("找不到 #terminal 容器");
 
+  // 捆綁字型（9.8MB woff2）由 CSS @font-face 非同步載入；xterm 在 open() 量測格寬，
+  // 若量到 fallback 字型，字型換上後 xterm 不會自行重量測（fitFontSize 算出同字級
+  // 即 early-return），冷啟動快速登入時首屏彩繪就以錯誤格寬排版、DuotoneOverlay 的
+  // measureText 也量錯，放大再還原（改變字級強制重量測）才復原。先等字型就緒再建
+  // terminal，量測從第一刻就是正確字型。系統字型（無對應 @font-face）立即 resolve；
+  // 載入失敗則 reject → 全程以 fallback 呈現，版面前後一致不會中途換
+  await document.fonts.load(`${config.fontSize}px "${config.fontFamily}"`).catch(() => {});
   const term = createTerminal(container, config.fontFamily, config.fontSize, config.lineHeight);
   const telnet = new TelnetFilter();
   const grid = new ScreenGrid(); // byte 網格 shadow：第五根因（半字覆寫）修復式接線
@@ -179,7 +186,9 @@ async function init(): Promise<void> {
 
   window.addEventListener("resize", () => fitFontSize(term));
   fitFontSize(term);
-  void document.fonts.ready.then(() => fitFontSize(term)); // 字型載入後格寬會變，重新量測
+  // 防禦性備援：主字型已於 init 開頭 await 載入；此處涵蓋「載入失敗後才 ready」等
+  // 邊角，字型集有變化時重新量測字級
+  void document.fonts.ready.then(() => fitFontSize(term));
 
   term.focus();
   if (configError) {
