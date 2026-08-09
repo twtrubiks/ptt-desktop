@@ -1,6 +1,6 @@
 [package]
 name = "ptt-desktop"
-version = "0.1.6"
+version = "0.1.7"
 description = "PTT 桌面瀏覽工具"
 authors = ["twtrubiks"]
 edition = "2021"
