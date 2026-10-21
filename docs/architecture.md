@@ -450,7 +450,8 @@ PttChrome 行為出處：一欄一 char、覆寫不動 partner（`term_buf.js`
 2. 覆寫只改被覆蓋的欄；partner 欄降為**孤兒半字**（保留原字、左右半
    記號與原色）。EL/ED 清範圍內的欄，切在 pair 中間時同樣只清範圍內半邊
 3. 編碼兩模式：big5 模式一欄一 byte（lead 0x81–0xFE + trail），utf-8
-   模式一欄為整字之半；切換時機與 codec 相同（送出密碼後）
+   模式一欄為整字之半；切換時機與 codec 相同（新舊 PTT 雙軌，見上文「編碼」段），
+   由 `main.ts` 的 `onSwitchUtf8` 同時撥 codec 與 shadow，`onResetBig5` 一併 `grid.reset()`
 4. 渲染判定：相鄰同字的左半+右半 → 完整字（xterm 原生呈現即正確）；
    孤兒半字 → xterm 已把該格清空或呈現錯誤，需補寫。孤兒呈現採 P3 的
    PUA 半字＋duotone-overlay 繪回半個字形（**優於 PttChrome 的 `?`

@@ -14,6 +14,10 @@
 你：照清單手動驗證（docs/e2e-checklist.md），滿意後自己 git push
 ```
 
+`docs/e2e-checklist.md` 的**未打勾項就是「還沒被真人驗過」的唯一真相**（該檔不進 git，
+本機才有）。沒開任務直接修掉的 hotfix 也記在那裡，Plans.md 不重複記帳；
+`/harness-plan archive` 每次封存會順手掃它一遍，避免未驗收項被埋掉。
+
 ## 啟動方式
 
 | 情境 | 指令 |
@@ -51,7 +55,8 @@
 | `/harness-work all` | 依序做完所有 TODO（每個都走完整流程） |
 
 每個任務的固定流程：標記 `cc:DOING` → 產生 sprint contract（圈定可改的檔案）→ 實作
-→ preflight（`npm run quality && npm run build && npm test` 全綠）→ 唯讀 reviewer 審查
+→ preflight（`npm run quality && npm run build && npm test` 全綠；改下行管線模組時
+另跑 `npm run replay:check`）→ 唯讀 reviewer 審查
 → REQUEST_CHANGES 就修（最多 3 輪，仍不過就標 `cc:BLOCKED` 問你）→ commit（不 push）
 → 標 `cc:DONE` + 列手動驗證清單。
 
@@ -64,7 +69,8 @@
 | `/harness-review --fix` | 審完自動修 critical/major |
 
 審查標準見 `.claude/harness/reviewer-prompt.md`：安全（帳密、自動登入不重試）、
-輕量目標（新依賴必審）、telnet/編碼協定正確性、架構紀律、測試品質、TS 品質、文件同步。
+輕量目標（新依賴必審）、telnet/編碼協定正確性、架構紀律、測試品質、TS 品質、文件同步
+（動到 renderer／字型／啟動順序時，缺 e2e 項算 major——那類回歸單元測試必然全綠）。
 
 ## Plans.md 狀態標記
 

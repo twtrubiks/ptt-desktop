@@ -61,5 +61,5 @@ npm run replay:check -- recordings/rec-*.jsonl   # 對本機錄檔重播驗畫�
 ## Conventions
 
 - 註解、文件、commit message 使用繁體中文；commit 遵循 Conventional Commits
-- telnet.ts / codec.ts / auto-login.ts 為有狀態模組，改動必附 edge case 測試
+- 有狀態模組（`docs/architecture.md` 模組表標「（有狀態）」者：telnet / codec / auto-login / screen-grid / sgr-reorder / duotone）改動必附 edge case 測試；改下行管線那幾個另跑 `npm run replay:check`
 - Tauri 2 / xterm.js 6 版本敏感 API 不確定時查官方文件，不憑記憶猜

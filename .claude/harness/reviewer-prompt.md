@@ -29,7 +29,13 @@
 
 ### 3. 協定與編碼正確性（major）
 - [ ] `telnet.ts`：IAC 狀態機能處理跨 frame 序列；HTTP 前導丟棄邏輯未被破壞
-- [ ] `codec.ts`：big5→utf-8 切換時機正確；TextDecoder stream 模式未被改成一次性解碼
+- [ ] `codec.ts` / `auto-login.ts`：big5→utf-8 的**雙軌**切換時機正確（新版＝位元組層
+      偵測 UTF-8 密碼提示、舊版＝送出密碼後），`utf8Switched` 保證只切一次，
+      `main.ts` 仍是先 `feedBytes` 再解碼；TextDecoder stream 模式未被改成一次性解碼。
+      規格見 worker-prompt.md「編碼切換時機」與 `docs/architecture.md`「編碼」段——
+      **切勿憑「送出密碼後才切」的舊規格判錯**
+- [ ] `screen-grid.ts`：shadow 的捲動模擬（末列 LF 上捲、`ESC M` 下捲）未被破壞；
+      新處理的序列有納入，未實作者仍記進 `unknownSequences`（靜默忽略 = major）
 - [ ] keepalive（60 秒 NOP）與斷線重連邏輯未被意外改動
 - [ ] ANSI/SGR 邊界情況（閃爍、色彩）的改動有對應測試
 
@@ -41,17 +47,25 @@
 
 ### 5. 測試（major）
 - [ ] 無測試刪除、斷言弱化、skip（`.claude/rules/test-quality.md`）
-- [ ] `telnet.ts` / `codec.ts` / `auto-login.ts` 的改動附有 edge case 測試
+- [ ] 有狀態模組的改動附有 edge case 測試——`telnet.ts` / `codec.ts` / `auto-login.ts` /
+      `screen-grid.ts` / `sgr-reorder.ts` / `duotone.ts`
+      （清單以 `docs/architecture.md` 模組表標「（有狀態）」者為準）
+- [ ] 改到下行管線模組（screen-grid / sgr-reorder / codec / duotone）時，worker 回報有
+      `replay=PASS` 或明說「無錄檔可驗」。錄檔不進 repo、你無法自行重跑，
+      **worker 完全不提 = major**
 - [ ] 新模組有對應 `tests/*.test.ts`
 
 ### 6. TypeScript 品質（major / minor）
 - [ ] 無新增 `any`（有理由註解 = minor，無理由 = major）
 - [ ] 未用型別斷言硬壓（`as unknown as X` 之類 = major）
 
-### 7. 文件（minor）
+### 7. 文件（minor；唯渲染／時序缺 e2e 項 = major）
 - [ ] 行為變更同步 README.md 相關段落
 - [ ] 模組增減同步 `docs/architecture.md`
 - [ ] UI / 連線行為變更是否需要在 `docs/e2e-checklist.md` 加項
+- [ ] 動到 `terminal.ts` / 字型 / renderer / `init()` 順序：**必須**有對應 e2e 項且
+      寫明觸發條件。這類（一次性量測／圖集快取）的回歸單元測試必然全綠，
+      e2e 項是唯一防線——**缺項 = major**
 
 ## 輸出格式
 

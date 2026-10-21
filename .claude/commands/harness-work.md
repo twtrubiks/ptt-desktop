@@ -43,6 +43,10 @@ Lead。從 Plans.md 取出任務 → 實作 → 送審 → 提交，一次一個
 npm run quality && npm run build && npm test
 ```
 
+改到下行管線的有狀態模組（`screen-grid.ts` / `sgr-reorder.ts` / `codec.ts` /
+`duotone.ts`）時追加 `npm run replay:check -- recordings/rec-*.jsonl`
+（判準見腳本檔頭；錄檔不進 repo，沒有錄檔就在回報寫明「無錄檔可驗」）。
+
 全綠才能進 Step 5。失敗只能修實作或補測試，
 禁止弱化測試（`.claude/rules/test-quality.md`）。
 

@@ -36,9 +36,11 @@ Planner。把需求整理成 Plans.md 的任務區塊。只寫 Plans.md，不動
 - [ ] npm run quality 通過
 - [ ] npm run build 通過
 - [ ] npm test 通過
+- [ ] npm run replay:check 通過（改 screen-grid / sgr-reorder / codec / duotone 時）
 - [ ] 手動驗證：docs/e2e-checklist.md 第 X 項（涉及 UI/連線行為時）
 
-**風險：** 無 / 說明（涉及 telnet/codec/auto-login 有狀態邏輯、依賴變更時必填）
+**風險：** 無 / 說明（涉及有狀態模組、依賴變更時必填；有狀態模組清單見
+`docs/architecture.md` 模組表標「（有狀態）」者）
 
 ---
 ```
@@ -64,6 +66,7 @@ Planner。把需求整理成 Plans.md 的任務區塊。只寫 Plans.md，不動
 4. Plans.md「已封存任務索引」加列：`# | 標題 | 定案結論`（一句話）
 5. Plans.md 開頭「最後封存」那行更新日期
 6. 檢查被封存任務的 DoD 有沒有未打勾的 `- [ ]`（多半是待真人做的手動驗證）——
-   有就在索引表下方明列，不可隨封存埋掉
+   有就在索引表下方明列，不可隨封存埋掉。**同時掃一次 `docs/e2e-checklist.md` 的
+   未打勾項**：沒開任務直接修掉的 hotfix 只會記在那裡，任務 DoD 掃不到
 7. 單獨 commit（`docs: 封存 Plans.md 已完成任務 P{N}–P{M}`），不與程式碼變更混在一起
    ——封存本身就是靠這個 commit 可回退，不另外留 `.bak` 檔
