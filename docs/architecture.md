@@ -135,6 +135,9 @@ PTT 短時間內重複登入會顯示「請勿頻繁登入」，所以：
 不走 gpui 的 asset 快取，預覽收掉後下一次 render 以 `window.drop_image` 從 GPU 圖集移除，
 否則記憶體只增不減。下載上限一般圖 8 MB、GIF 20 MB；GIF 解碼後超過 128 MB 只留第一格。
 
+預覽放在滑鼠左右較寬的一側、高度可用滿視窗，等比縮到放得下（不放大）。寬高由 `preview_rect`
+自己算：交給 `max_w`／`max_h` 的話 taffy 兩軸各自夾限、不保比例，直式圖會被縮得過小。
+
 ## 除錯
 
 - `PTT_LOG=info|debug|trace`：內部 log 印到 stderr，不含帳密與畫面內容。

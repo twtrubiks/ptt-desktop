@@ -27,9 +27,9 @@ use gpui::{
     canvas, div, fill, img, point, prelude::*, px, rgb, size, App, Bounds, ClipboardItem,
     ContentMask, Context, CursorStyle, ElementInputHandler, Entity, EntityInputHandler,
     FocusHandle, Focusable, Font, FontFallbacks, Hsla, Image, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, PathBuilder, Pixels, Point, Render,
-    RenderImage, ScrollDelta, ScrollWheelEvent, SharedString, Size, Task, TextRun, UTF16Selection,
-    Window, WindowTextSystem,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point, Render, RenderImage,
+    ScrollDelta, ScrollWheelEvent, SharedString, Size, Task, TextRun, UTF16Selection, Window,
+    WindowTextSystem,
 };
 
 use crate::auto_login::{AutoLogin, Credentials, Event as LoginEvent, Reason};
@@ -48,9 +48,8 @@ const TICK: Duration = Duration::from_millis(500);
 const MARGIN: f32 = 8.0;
 /// 滑鼠掃過圖片連結不觸發，停住才載圖
 const PREVIEW_DELAY: Duration = Duration::from_millis(250);
+/// 預覽與滑鼠、與視窗邊緣各留的間距
 const PREVIEW_EDGE_MARGIN: f32 = 12.0;
-/// 預覽最大佔視窗的比例（寬、高各自）
-const PREVIEW_MAX_RATIO: f32 = 0.45;
 /// 等舊連線回報關閉的上限（`net.rs` 的關閉握手上限 2 秒要比它短）。確認重連時逾時就放棄
 /// 等待、交還使用者按 Enter，不自動連；關視窗時逾時就直接結束程式
 const CLOSE_WAIT: Duration = Duration::from_secs(3);
@@ -1039,38 +1038,50 @@ fn notice_element(text: SharedString, font: &Font, layout: Layout) -> impl IntoE
         )
 }
 
-/// 浮動預覽：依滑鼠所在象限往反方向錨定，寬高各不超過視窗的 45%，必不超出視窗。
-/// `img` 要有 id，gpui 才會跨幀記住目前播到第幾格，GIF 才會動；id 綁 `seq` 讓每張圖各用
-/// 一份狀態——共用的話，上一張的格數會帶進格數較少的下一張，`render_size` 直接越界 panic
+/// 預覽的位置與大小 `(left, top, w, h)`：放在滑鼠左右較寬的一側，高度可用滿視窗，
+/// 等比縮到放得下（不放大）；垂直以滑鼠為中心，再夾回視窗內。
+/// 寬高自己算而不靠 `max_w`／`max_h`：taffy 對兩軸各自夾限、不保比例，直式圖會被縮得過小
+fn preview_rect(
+    image: (f32, f32),
+    mouse: (f32, f32),
+    viewport: (f32, f32),
+) -> (f32, f32, f32, f32) {
+    let (iw, ih) = (image.0.max(1.0), image.1.max(1.0));
+    let (mx, my) = mouse;
+    let (vw, vh) = viewport;
+    let m = PREVIEW_EDGE_MARGIN;
+    let on_right = mx < vw / 2.0;
+    let avail_w = (if on_right { vw - mx } else { mx } - 2.0 * m).max(1.0);
+    let avail_h = (vh - 2.0 * m).max(1.0);
+    let scale = (avail_w / iw).min(avail_h / ih).min(1.0);
+    let (w, h) = (iw * scale, ih * scale);
+    let left = if on_right { mx + m } else { mx - m - w };
+    let top = (my - h / 2.0).min(vh - m - h).max(m);
+    (left, top, w, h)
+}
+
+/// 浮動預覽。`img` 要有 id，gpui 才會跨幀記住目前播到第幾格，GIF 才會動；id 綁 `seq` 讓
+/// 每張圖各用一份狀態——共用的話，上一張的格數會帶進格數較少的下一張，`render_size`
+/// 直接越界 panic
 fn preview_element(
     image: Arc<RenderImage>,
     at: Point<Pixels>,
     viewport: Size<Pixels>,
     seq: u64,
 ) -> impl IntoElement {
-    let vw = f32::from(viewport.width);
-    let vh = f32::from(viewport.height);
-    let (mx, my) = (f32::from(at.x), f32::from(at.y));
-    let max_w = px(vw * PREVIEW_MAX_RATIO);
-    let max_h = px(vh * PREVIEW_MAX_RATIO);
-    let mut d = div().absolute().max_w(max_w).max_h(max_h);
-    d = if mx < vw / 2.0 {
-        d.left(px(mx + PREVIEW_EDGE_MARGIN))
-    } else {
-        d.right(px(vw - mx + PREVIEW_EDGE_MARGIN))
-    };
-    d = if my < vh / 2.0 {
-        d.top(px(my + PREVIEW_EDGE_MARGIN))
-    } else {
-        d.bottom(px(vh - my + PREVIEW_EDGE_MARGIN))
-    };
-    d.child(
-        img(image)
-            .id(("ptt-preview", seq as usize))
-            .max_w(max_w)
-            .max_h(max_h)
-            .object_fit(ObjectFit::ScaleDown),
-    )
+    let size = image.size(0);
+    let (left, top, w, h) = preview_rect(
+        (size.width.0 as f32, size.height.0 as f32),
+        (f32::from(at.x), f32::from(at.y)),
+        (f32::from(viewport.width), f32::from(viewport.height)),
+    );
+    img(image)
+        .id(("ptt-preview", seq as usize))
+        .absolute()
+        .left(px(left))
+        .top(px(top))
+        .w(px(w))
+        .h(px(h))
 }
 
 /// 診斷用：`PTT_DUMP=<檔案>` 時把 telnet 濾層後的下行 bytes 原樣附加進該檔
@@ -1521,5 +1532,57 @@ mod tests {
         assert_eq!(w.feed(2.9), 0);
         w.reset();
         assert_eq!(w.feed(0.2), 0);
+    }
+
+    #[test]
+    fn preview_tall_image_uses_full_window_height() {
+        // 463×823 直式圖：高度縮到視窗高扣上下邊距，寬度等比，不再被壓在視窗的一小塊
+        let (left, top, w, h) = preview_rect((463.0, 823.0), (100.0, 100.0), (1000.0, 720.0));
+        assert_eq!(h, 696.0);
+        assert!((w / h - 463.0 / 823.0).abs() < 1e-4);
+        assert_eq!(left, 112.0);
+        // 以滑鼠為中心會超出上緣，夾回邊距
+        assert_eq!(top, 12.0);
+    }
+
+    #[test]
+    fn preview_small_image_keeps_size_and_centers_on_mouse() {
+        // 不放大；滑鼠在右半邊時放左側、右緣離滑鼠一個邊距
+        assert_eq!(
+            preview_rect((100.0, 50.0), (800.0, 300.0), (1000.0, 720.0)),
+            (688.0, 275.0, 100.0, 50.0)
+        );
+    }
+
+    #[test]
+    fn preview_wide_image_is_limited_by_the_wider_side() {
+        // 滑鼠在 x=300：右側可用 700−24，寬圖以寬度為限
+        let (left, _, w, h) = preview_rect((2000.0, 500.0), (300.0, 360.0), (1000.0, 720.0));
+        assert_eq!((left, w, h), (312.0, 676.0, 169.0));
+    }
+
+    #[test]
+    fn preview_never_leaves_the_viewport() {
+        let (vw, vh) = (1000.0, 720.0);
+        for image in [
+            (463.0, 823.0),
+            (4000.0, 300.0),
+            (300.0, 9000.0),
+            (50.0, 50.0),
+            (0.0, 0.0),
+        ] {
+            for mouse in [
+                (0.0, 0.0),
+                (999.0, 0.0),
+                (0.0, 719.0),
+                (999.0, 719.0),
+                (500.0, 360.0),
+            ] {
+                let (left, top, w, h) = preview_rect(image, mouse, (vw, vh));
+                assert!(w > 0.0 && h > 0.0, "{image:?} {mouse:?}");
+                assert!(left >= 0.0 && left + w <= vw, "{image:?} {mouse:?}");
+                assert!(top >= 0.0 && top + h <= vh, "{image:?} {mouse:?}");
+            }
+        }
     }
 }
