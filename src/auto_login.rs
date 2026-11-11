@@ -142,6 +142,11 @@ impl AutoLogin {
         self.active
     }
 
+    /// 密碼已通過（見檔頭「分兩階段」）。呼叫端據此決定使用者插手時要不要提示
+    pub fn authenticated(&self) -> bool {
+        self.authenticated
+    }
+
     pub fn start(&mut self, now: Instant) {
         self.active = true;
         self.deadline = Some(now + STEP_TIMEOUT);
@@ -480,6 +485,19 @@ mod tests {
         h.feed_utf8("請輸入您的密碼: ");
         assert_eq!(h.sent, vec!["myid,\r", "secret\r"]);
         h
+    }
+
+    #[test]
+    fn authenticated_only_after_password_is_confirmed() {
+        assert!(!H::new().login.authenticated());
+        // 密碼送出但還沒確認：可能是錯的，仍算登入前
+        let mut h = h_after_password();
+        assert!(!h.login.authenticated());
+        h.feed_utf8("正在檢查密碼...密碼正確！ 開始登入系統...");
+        assert!(h.login.authenticated());
+        // 之後按掉歡迎畫面也不會退回登入前
+        h.feed_utf8("請按任意鍵繼續");
+        assert!(h.login.authenticated());
     }
 
     #[test]
