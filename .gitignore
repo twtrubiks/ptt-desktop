@@ -1,16 +1,5 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
+# cargo 產物
+/target
 
 # 個人 E2E 驗收清單，不進 git
 docs/e2e-checklist.md
@@ -19,17 +8,18 @@ docs/e2e-checklist.md
 .claude/settings.local.json
 .claude/harness/contracts/
 
-# P4 dev 錄製原始檔（含個資：登入回顯代號、狀態列），絕不進 repo；
-# 清洗後的 fixture 才進 tests/fixtures
+# PTT_DUMP 錄檔（含個資：登入回顯代號、狀態列），絕不進 repo
 recordings/
+
+# 切到 tauri 分支時留下的產物
+node_modules
+dist
+src-tauri/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
 *.sw?
+*.log

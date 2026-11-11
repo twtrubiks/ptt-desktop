@@ -2,20 +2,21 @@
 
 ## Project Overview
 
-PTT 桌面客戶端（Tauri 2 + xterm.js）。固定 80×24 BBS 終端畫面，經官方 WebSocket 端點 `wss://ws.ptt.cc/bbs` 連線。
+PTT 桌面客戶端（GPUI 全 Rust）。固定 80×24 BBS 終端畫面，經官方 WebSocket 端點 `wss://ws.ptt.cc/bbs` 連線。
+目前只支援 Linux。舊的 Tauri 2 + xterm.js 版在 `tauri` 分支，不在這裡維護。
 
-**首要設計目標：輕量、快。** 系統 WebView、純 TypeScript 無前端框架、不做多餘的事。所有變更以此為最高取捨標準。
+**首要設計目標：輕量、快。** 單一執行檔、無 WebView、不做多餘的事。所有變更以此為最高取捨標準。
 
 ## Tech Stack
 
-- **Frontend（約 98% 程式碼，所有業務邏輯）**: TypeScript (strict) + xterm.js 6 + Vite 8
-- **Rust 側**: Tauri 2 樣板 + plugin 註冊，不含業務邏輯
-- **測試**: Vitest（單元測試）；E2E 為手動清單 `docs/e2e-checklist.md`
-- **品質**: oxlint / prettier / stylelint / cargo fmt / clippy（`npm run quality` 一次跑完）
+- Rust 2021 + gpui 0.2（版本釘住，升版是獨立任務）
+- 連線：tungstenite + native-tls（ws.ptt.cc 不支援 TLS 1.3，不能換 rustls）
+- 測試：`cargo test`（單元測試寫在各模組內，fixture 在 `tests/fixtures/`）；E2E 為手動清單 `docs/e2e-checklist.md`
 
 ## Architecture
 
-src/ 每檔一模組、單一職責，main.ts 負責組裝。模組表、資料流、telnet/編碼協定細節見 `docs/architecture.md`（改架構必同步此檔）。
+`src/` 每檔一模組、單一職責，串接只在 `view.rs`。模組表、資料流、協定與各行為的理由見
+`docs/architecture.md`（改架構必同步此檔）。
 
 實作規範：
 @.claude/harness/worker-prompt.md
@@ -30,7 +31,7 @@ src/ 每檔一模組、單一職責，main.ts 負責組裝。模組表、資料�
 | `/harness-work` | 實作 Plans.md 任務（含 review 迴圈與提交） |
 | `/harness-review` | 獨立審查（預設唯讀，`--fix` 可修） |
 
-使用說明（給人看的完整版）：`docs/harness-guide.md`
+使用說明：`docs/harness-guide.md`
 
 - 任務 SSOT：`Plans.md`，標記 `cc:TODO / cc:DOING / cc:BLOCKED / cc:DONE`
 - 自主執行時何時才停下來問人：`.claude/rules/confirmation-scope.md`
@@ -39,27 +40,28 @@ src/ 每檔一模組、單一職責，main.ts 負責組裝。模組表、資料�
 ## Common Commands
 
 ```bash
-npm run dev            # Vite dev server（純前端）
-npm run tauri dev      # 完整桌面 app
-npm run quality        # format:check + oxlint + stylelint + cargo fmt check + clippy
-npm run build          # tsc + vite build
-npm test               # vitest run
-npm run replay:check -- recordings/rec-*.jsonl   # 對本機錄檔重播驗畫面（改 screen-grid 等模組後跑）
+cargo run                       # 開發模式（讀真實設定檔並連線，實機驗證由使用者做）
+cargo test                      # 單元測試
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+scripts/build-appimage.sh       # 本機打包 AppImage（用法見檔頭；推 v* tag 時 release.yml 也用它）
 ```
 
-## DoD（與 .github/workflows/ci.yml 完全一致）
+## DoD（與 .github/workflows/ci.yml 一致）
 
-`npm run quality && npm run build && npm test`
+`cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`
 
 ## 專案級 Invariant（不可協商）
 
-1. 自動登入**絕不自動重試**（防鎖帳號）
+1. 自動登入**絕不自動重試**（防鎖帳號）；重連不繞過 30 秒冷卻
 2. 帳密絕不進 log、錯誤訊息、測試 fixture、repo
-3. 絕不讀取 `~/.config/ptt-desktop/`（真實帳密，settings 已 deny）；範例與測試一律用 `config.example.json` 的假資料
-4. 不新增依賴、不引入前端框架，除非 reviewer 通過充分理由
+3. 絕不讀取 `~/.config/ptt-desktop/`（真實帳密，settings 已 deny），也不自行啟動 app 用真實帳號連線；
+   範例與測試一律用 `config.example.json` 的假資料
+4. 不新增依賴，除非 reviewer 通過充分理由
 
 ## Conventions
 
 - 註解、文件、commit message 使用繁體中文；commit 遵循 Conventional Commits
-- 有狀態模組（`docs/architecture.md` 模組表標「（有狀態）」者：telnet / codec / auto-login / screen-grid / sgr-reorder / duotone）改動必附 edge case 測試；改下行管線那幾個另跑 `npm run replay:check`
-- Tauri 2 / xterm.js 6 版本敏感 API 不確定時查官方文件，不憑記憶猜
+- 文件只寫現況與一兩句理由，不記日期、任務編號與修正過程；實測數字放 `docs/comparison.md`
+- 有狀態模組（`docs/architecture.md` 模組表標「（有狀態）」者）改動必附 edge case 測試
+- gpui 0.2 的 API 不確定時讀 `~/.cargo/registry` 裡的原始碼，不憑記憶猜

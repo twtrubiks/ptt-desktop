@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PTT Desktop
+Comment=PTT 桌面客戶端
+Exec=ptt-gpui
+Icon=ptt-gpui
+Categories=Network;
+Terminal=false

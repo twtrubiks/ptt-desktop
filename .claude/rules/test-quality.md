@@ -2,10 +2,10 @@
 
 ## 絕對禁止
 
-- 刪除測試、註解掉測試、加 `.skip` / `.todo` 讓測試不跑
-- 弱化斷言（刪 expect、精確比對改成 `toBeTruthy`、放寬容忍值）
+- 刪除測試、註解掉測試、加 `#[ignore]` 讓測試不跑
+- 弱化斷言（刪 assert、精確比對改成寬鬆判斷、放寬容忍值）
 - 把期望值改成目前實作的實際輸出以求通過——除非行為變更本來就是任務目標，且 Plans.md 有記載
-- 在測試中 mock 掉被測邏輯本身
+- 在測試中繞過被測邏輯本身
 
 ## 方向不對稱原則
 
@@ -14,12 +14,10 @@
 
 ## 專案特定要求
 
-- 有狀態模組改動必附 edge case 測試（清單以 `docs/architecture.md` 模組表標
-  「（有狀態）」者為準）：`telnet.ts`（IAC 序列跨 frame）、`codec.ts`（多位元組字元
-  跨 chunk、編碼只切一次）、`auto-login.ts`（登入異常路徑）、`screen-grid.ts`
-  （末列 LF 上捲、`ESC M` 下捲）、`sgr-reorder.ts` / `duotone.ts`（SGR／APC 跨 frame）
-- 下行管線模組（screen-grid / sgr-reorder / codec / duotone）另跑 `npm run replay:check`
-  對本機錄檔重播。它抓的是單元測試碰不到的跨模組脫節，**不可用來取代 edge case 測試**
+- 有狀態模組改動必附 edge case 測試（清單以 `docs/architecture.md` 模組表標「（有狀態）」者為準）：
+  `telnet.rs`（IAC 序列跨 frame）、`grid.rs`（多位元組字跨 chunk、半字覆寫、兩個方向的捲動）、
+  `auto_login.rs`（登入異常路徑、逾時、編碼只切一次）、`reconnect.rs`（冷卻邊界）、
+  `net.rs`（喚醒、關閉逾時）
 - 測試 fixture 不得含真實帳密——一律用假資料（參考 `config.example.json`）
 
 ## 心法

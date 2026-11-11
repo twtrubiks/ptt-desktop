@@ -40,12 +40,8 @@ Lead。從 Plans.md 取出任務 → 實作 → 送審 → 提交，一次一個
 ## Step 4 — Preflight
 
 ```bash
-npm run quality && npm run build && npm test
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
-
-改到下行管線的有狀態模組（`screen-grid.ts` / `sgr-reorder.ts` / `codec.ts` /
-`duotone.ts`）時追加 `npm run replay:check -- recordings/rec-*.jsonl`
-（判準見腳本檔頭；錄檔不進 repo，沒有錄檔就在回報寫明「無錄檔可驗」）。
 
 全綠才能進 Step 5。失敗只能修實作或補測試，
 禁止弱化測試（`.claude/rules/test-quality.md`）。
@@ -72,11 +68,11 @@ verdict 處理：
 ## Step 7 — 提交
 
 Conventional Commits + 繁體中文描述
-（例：`fix: 修正 telnet IAC 序列跨 frame 時漏濾的問題`）。
+（例：`fix: 修正 telnet IAC 序列跨 frame 時漏濾的問題`），不寫任務編號與過程。
 只 commit，**不 push**——push 屬外部送信（confirmation-scope 第 1 類）。
 
 ## Step 8 — 收尾
 
 1. Plans.md 該任務改 `cc:DONE`，變更範圍與 DoD checkbox 勾選
-2. 行為變更同步 README.md / `docs/architecture.md` 相關段落
+2. 行為變更同步 README.md / `docs/architecture.md` 相關段落（只寫現況與理由，不記日期與過程）
 3. 回報：完成摘要 + preflight 結果 + 手動驗證清單（worker-prompt.md 的回報格式）

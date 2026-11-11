@@ -17,7 +17,7 @@
 
 1. 取得 diff 與受影響檔案清單，一行說明審查對象與選擇理由
 2. 逐區塊過 reviewer-prompt.md 的 checklist
-   （安全 → 輕量 → 協定 → 架構 → 測試 → TS 品質 → 文件）
+   （安全 → 輕量 → 協定 → 架構 → 測試 → Rust 品質 → 文件）
 3. 若 `.claude/harness/contracts/` 有對應 contract：比對 scope 與 non_goals，
    超出 scope 且無理由的改動列為 major
 4. 依 reviewer-prompt.md 的輸出格式給 verdict
@@ -26,6 +26,6 @@
 
 1. 先輸出完整審查報告（同唯讀模式）
 2. 依嚴重度由高至低修正 critical / major，每修一項跑
-   `npm run quality && npm test` 驗證
+   `cargo clippy --all-targets -- -D warnings && cargo test` 驗證
 3. minor / recommendation 只列不修
 4. 修正本身也受 `.claude/rules/test-quality.md` 約束——不得用弱化測試「修」問題

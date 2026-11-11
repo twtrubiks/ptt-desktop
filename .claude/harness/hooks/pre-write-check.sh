@@ -47,7 +47,7 @@ case "$FILE_PATH" in
     ;;
   */node_modules/*) deny "禁止寫入 node_modules: $FILE_PATH" ;;
   */.git/*) deny "禁止寫入 .git: $FILE_PATH" ;;
-  */src-tauri/target/* | */dist/*) deny "禁止寫入建置產物目錄: $FILE_PATH" ;;
+  */target/*) deny "禁止寫入建置產物目錄: $FILE_PATH" ;;
   "$HOME/.config/ptt-desktop/"*) deny "禁止寫入真實設定目錄（含帳密）: $FILE_PATH" ;;
 esac
 

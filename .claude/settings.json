@@ -10,14 +10,11 @@
       "Bash(git branch:*)",
       "Bash(git rev-parse:*)",
       "Bash(git ls-files:*)",
-      "Bash(npm run quality:*)",
-      "Bash(npm run lint:*)",
-      "Bash(npm run format:check:*)",
-      "Bash(npm run stylelint:*)",
-      "Bash(npm run build:*)",
-      "Bash(npm test:*)",
-      "Bash(npm run rust:fmt:check:*)",
-      "Bash(npm run rust:clippy:*)"
+      "Bash(cargo fmt:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo check:*)"
     ],
     "ask": [
       "Bash(git push:*)",
