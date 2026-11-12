@@ -48,6 +48,14 @@ chmod +x ptt-gpui-*.AppImage && ./ptt-gpui-*.AppImage
 AppImage 只包執行檔，系統需要 `libssl3`、`libxkbcommon-x11-0`、Vulkan 驅動
 （`mesa-vulkan-drivers`）與 Noto Sans Mono CJK TC 字型（`fonts-noto-cjk`）。
 
+NVIDIA 閉源驅動自帶 Vulkan，不靠 `mesa-vulkan-drivers`：Debian 確認有裝 `nvidia-vulkan-icd`
+（`nvidia-driver` 預設會帶），Ubuntu 的 `nvidia-driver-*` 已內含。不確定驅動能不能用時：
+
+```bash
+sudo apt install vulkan-tools
+vulkaninfo --summary   # Devices 列出你的顯示卡即可；只有 llvmpipe 代表沒抓到顯示卡驅動
+```
+
 ## 從原始碼建置
 
 系統需求（Debian／Ubuntu）：Rust toolchain、上述的 Vulkan 驅動與字型，以及
