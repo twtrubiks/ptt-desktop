@@ -8,7 +8,7 @@
 //!   無提示訊息且沒在等舊連線關閉時 tick 停止
 //! - 重連（Ctrl+R／斷線後 Enter）經 `reconnect.rs` 節流：30 秒登入冷卻、線上時要按兩次，
 //!   且等舊連線確定關閉才開新的；提示訊息浮在畫面底部，不寫進網格
-//! - 關視窗時連線還在就先正常關閉（等舊連線回報 Closed，最多 `CLOSE_WAIT`）才結束程式，
+//! - 關視窗或按 Ctrl+Shift+Q 時連線還在就先正常關閉（等舊連線回報 Closed，最多 `CLOSE_WAIT`）才結束程式，
 //!   等待中再關一次視窗就直接結束
 //! - 自動登入進行中使用者自己按鍵／貼上／輸入法送字就立刻交還手動（密碼已通過則不提示）；
 //!   已登入後的逾時交還只浮出提示，只有登入前的中止（密碼不對等）才寫進網格
@@ -17,6 +17,8 @@
 //! - 鍵盤：特殊鍵／Ctrl 組合在 key_down 編碼送出；可列印字元與 IME 提交文字走
 //!   `EntityInputHandler::replace_text_in_range`（GPUI 對未攔截的 keydown 會把 key_char
 //!   交給 input handler，中文輸入法也走同一條路，統一在此送出）
+//! - 帳號設定對話框（Ctrl+Shift+S）：開著時按鍵、文字、貼上都進表單（`account_form.rs`），
+//!   不送給 PTT；畫面是把表單的 ANSI 文字列蓋到這一幀的格子上，與 PTT 畫面同一套繪製
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -32,8 +34,9 @@ use gpui::{
     WindowTextSystem,
 };
 
+use crate::account_form::{self, AccountForm, FormAction};
 use crate::auto_login::{AutoLogin, Credentials, Event as LoginEvent, Reason};
-use crate::config::{Config, LoadResult};
+use crate::config::{self, Config, LoadResult};
 use crate::grid::{Cell, Grid, COLS, ROWS};
 use crate::hotkeys::{Hotkeys, KeyAction, Mods};
 use crate::image_preview;
@@ -55,6 +58,11 @@ const PREVIEW_EDGE_MARGIN: f32 = 12.0;
 const CLOSE_WAIT: Duration = Duration::from_secs(3);
 /// 底部提示訊息的顯示時間（與重連確認窗同長，訊息消失＝確認失效）
 const NOTICE_DURATION: Duration = CONFIRM_WINDOW;
+/// 沒設定帳密時，啟動後提示帳號設定快捷鍵的顯示時間
+const ACCOUNT_HINT_DURATION: Duration = Duration::from_secs(8);
+/// 帳號設定對話框在網格上的位置（置中）
+const FORM_TOP: usize = (ROWS - account_form::HEIGHT) / 2;
+const FORM_LEFT: usize = (COLS - account_form::WIDTH) / 2;
 /// 滾輪一格在 gpui 是 3 行（X11、Wayland 皆同；gpui 的 `SCROLL_LINES` 不公開，只能照抄）
 const WHEEL_LINES_PER_NOTCH: f32 = 3.0;
 /// 一個滾輪事件最多換成幾次方向鍵，觸控板一次甩很大或座標跳動時不會一口氣送出一長串
@@ -172,6 +180,8 @@ pub struct PttView {
     exiting: bool,
     /// 浮在畫面底部的提示訊息與其到期時間（不寫進網格，免得弄亂 PTT 畫面）
     notice: Option<(SharedString, Instant)>,
+    /// 帳號設定對話框（開著時輸入都進表單，不送給 PTT）
+    account_form: Option<AccountForm>,
 
     blink_on: bool,
     cursor_on: bool,
@@ -249,6 +259,7 @@ impl PttView {
             closing_since: None,
             exiting: false,
             notice: None,
+            account_form: None,
             blink_on: true,
             cursor_on: true,
             ticking: false,
@@ -274,6 +285,12 @@ impl PttView {
             ));
         } else {
             this.connect(cx);
+            if this.config.username.is_empty() || this.config.password.is_empty() {
+                this.notice = Some((
+                    "按 Ctrl+Shift+S 可設定帳號，之後自動登入".into(),
+                    Instant::now() + ACCOUNT_HINT_DURATION,
+                ));
+            }
         }
         this.ensure_tick(window, cx);
         this
@@ -352,7 +369,14 @@ impl PttView {
         self.show_notice("正在關閉目前的連線…".to_string());
     }
 
-    /// 使用者要關視窗。連線還在就先送出關閉、擋下這次關閉，等舊連線回報 Closed 才結束程式，
+    /// Ctrl+Shift+Q：與關視窗走同一條路，連線關好才結束；等待中再按一次就直接結束
+    fn quit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.request_exit(window, cx) {
+            cx.quit();
+        }
+    }
+
+    /// 使用者要關視窗（或按了結束快捷鍵）。連線還在就先送出關閉、擋下這次關閉，等舊連線回報 Closed 才結束程式，
     /// 讓 `net.rs` 做完 WebSocket 關閉握手；否則程式一結束，連線就被硬切斷。
     /// 已經在等了又關一次就直接放行。回傳 true＝視窗現在就關
     fn request_exit(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -363,7 +387,7 @@ impl PttView {
         if self.closing_since.is_none() {
             self.begin_close();
         }
-        self.show_notice("正在關閉連線，關好就結束（再關一次視窗可立即結束）".to_string());
+        self.show_notice("正在關閉連線，關好就結束（再關一次可立即結束）".to_string());
         self.ensure_tick(window, cx);
         cx.notify();
         false
@@ -386,6 +410,92 @@ impl PttView {
 
     fn show_notice(&mut self, text: String) {
         self.notice = Some((text.into(), Instant::now() + NOTICE_DURATION));
+    }
+
+    // ---- 帳號設定對話框 ----
+
+    /// 以目前的設定值開啟對話框。不動連線與自動登入：對話框開著時按鍵不會送給 PTT
+    fn open_account_form(&mut self) {
+        self.account_form = Some(AccountForm::new(
+            &self.config.username,
+            &self.config.password,
+            &self.config.kick_other_logins,
+        ));
+        self.preedit.clear();
+        self.selection = None;
+        self.drag_anchor = None;
+        self.hover_url = None;
+        self.clear_preview();
+    }
+
+    /// 寫回設定檔並更新記憶體中的帳密，下次連線才生效：這裡不重連也不啟動自動登入，
+    /// 連線時機仍由使用者決定（不繞過冷卻、不自動重試）。寫檔失敗就留在對話框顯示原因
+    fn save_account_form(&mut self) {
+        let Some(form) = self.account_form.as_mut() else {
+            return;
+        };
+        if let Err(e) = config::save_account(form.username(), form.password(), form.kick_answer()) {
+            form.set_error(e);
+            return;
+        }
+        self.config.username = form.username().to_string();
+        self.config.password = form.password().to_string();
+        self.config.kick_other_logins = form.kick_answer().to_string();
+        self.account_form = None;
+        let saved = if self.config.username.is_empty() || self.config.password.is_empty() {
+            "已儲存。帳號或密碼留空，不會自動登入"
+        } else if self.awaiting_reconnect {
+            "已儲存，按 Enter 連線即自動登入"
+        } else {
+            "已儲存，下次連線起自動登入（Ctrl+R 重連）"
+        };
+        self.show_notice(saved.to_string());
+    }
+
+    /// 對話框開著時的按鍵。全螢幕、貼上與結束程式照常；其餘不是表單要的鍵一律吃掉，不送給 PTT。
+    /// 沒帶修飾鍵的可列印字元放行，GPUI 會把它交給 input handler 再進表單
+    fn on_form_key(
+        &mut self,
+        action: KeyAction,
+        ev: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ks = &ev.keystroke;
+        match action {
+            KeyAction::ToggleFullscreen => {
+                window.toggle_fullscreen();
+                cx.stop_propagation();
+                return;
+            }
+            KeyAction::Paste => {
+                self.paste(cx.read_from_clipboard());
+                cx.stop_propagation();
+                cx.notify();
+                return;
+            }
+            KeyAction::Quit => {
+                self.quit(window, cx);
+                cx.stop_propagation();
+                return;
+            }
+            _ => {}
+        }
+        if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
+            cx.stop_propagation();
+            return;
+        }
+        let Some(form) = self.account_form.as_mut() else {
+            return;
+        };
+        match form.key(&ks.key, ks.modifiers.shift) {
+            FormAction::Ignored => return,
+            FormAction::Handled => {}
+            FormAction::Cancel => self.account_form = None,
+            FormAction::Save => self.save_account_form(),
+        }
+        cx.stop_propagation();
+        cx.notify();
     }
 
     fn start_auto_login(&mut self) {
@@ -543,6 +653,10 @@ impl PttView {
         if text.is_empty() {
             return;
         }
+        if let Some(form) = self.account_form.as_mut() {
+            form.insert(&text);
+            return;
+        }
         self.take_over_login();
         let normalized = text.replace("\r\n", "\r").replace('\n', "\r");
         self.send_text(&normalized);
@@ -669,6 +783,11 @@ impl PttView {
         let action = self
             .hotkeys
             .translate(&ks.key, ks.key_char.as_deref(), mods);
+        if self.account_form.is_some() {
+            self.on_form_key(action, ev, window, cx);
+            self.ensure_tick(window, cx);
+            return;
+        }
         match action {
             KeyAction::Reconnect => {
                 self.request_reconnect(cx);
@@ -685,6 +804,15 @@ impl PttView {
             KeyAction::Paste => {
                 self.paste(cx.read_from_clipboard());
                 cx.stop_propagation();
+            }
+            KeyAction::Quit => {
+                self.quit(window, cx);
+                cx.stop_propagation();
+            }
+            KeyAction::AccountSettings => {
+                self.open_account_form();
+                cx.stop_propagation();
+                cx.notify();
             }
             KeyAction::Send(bytes) => {
                 if self.awaiting_reconnect {
@@ -722,6 +850,9 @@ impl PttView {
 
     fn on_mouse_move(&mut self, ev: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.mouse_pos = ev.position;
+        if self.account_form.is_some() {
+            return; // 對話框開著：不選取、不預覽底下的畫面
+        }
         if let (Some(anchor), Some(MouseButton::Left)) = (self.drag_anchor, ev.pressed_button) {
             let cur = self.cell_at_clamped(ev.position);
             let sel = (cur != anchor).then_some((anchor, cur));
@@ -744,6 +875,9 @@ impl PttView {
 
     fn on_mouse_down(&mut self, ev: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus_handle);
+        if self.account_form.is_some() {
+            return;
+        }
         self.drag_anchor = Some(self.cell_at_clamped(ev.position));
         if self.selection.take().is_some() {
             cx.notify();
@@ -764,12 +898,16 @@ impl PttView {
 
     fn on_middle_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.paste(cx.read_from_primary());
+        if self.account_form.is_some() {
+            cx.notify();
+        }
     }
 
     /// 滾輪一格送一次 ↑／↓（PTT 不收滑鼠事件，只能翻成按鍵）。自動登入進行中不送：
-    /// 滾輪容易誤觸，不該像按鍵那樣把登入打斷；未連線、等重連、關閉中也不送
+    /// 滾輪容易誤觸，不該像按鍵那樣把登入打斷；未連線、等重連、關閉中、帳號設定對話框開著也不送
     fn on_scroll_wheel(&mut self, ev: &ScrollWheelEvent, _: &mut Window, _: &mut Context<Self>) {
-        if self.auto_login.is_some()
+        if self.account_form.is_some()
+            || self.auto_login.is_some()
             || !self.connected
             || self.awaiting_reconnect
             || self.closing_since.is_some()
@@ -906,6 +1044,11 @@ impl EntityInputHandler for PttView {
             self.preedit.clear();
             cx.notify();
         }
+        if let Some(form) = self.account_form.as_mut() {
+            form.insert(new_text); // 表單只收 ASCII，輸入法提交的中文在這裡被丟掉
+            cx.notify();
+            return;
+        }
         if !new_text.is_empty() {
             self.take_over_login();
         }
@@ -921,6 +1064,9 @@ impl EntityInputHandler for PttView {
         cx: &mut Context<Self>,
     ) {
         // 組字中：Wayland 下輸入法不畫預編輯文字，由 paint_frame 畫在游標格
+        if self.account_form.is_some() {
+            return; // 表單不收中文，組字中的文字也不畫
+        }
         if self.preedit != new_text {
             self.preedit = new_text.to_string();
             cx.notify();
@@ -959,10 +1105,17 @@ impl Render for PttView {
         let calib = self.calibrate(&text_system);
         self.layout = self.compute_layout(window.viewport_size(), window.scale_factor(), calib);
 
+        let mut cells = self.grid.cells().to_vec();
+        let mut cursor = self.grid.cursor();
+        let mut cursor_visible = self.grid.cursor_visible();
+        if let Some(form) = &self.account_form {
+            cursor = overlay_form(&mut cells, form);
+            cursor_visible = true;
+        }
         let frame = Frame {
-            cells: self.grid.cells().to_vec(),
-            cursor: self.grid.cursor(),
-            cursor_visible: self.grid.cursor_visible(),
+            cells,
+            cursor,
+            cursor_visible,
             cursor_on: self.cursor_on,
             blink_on: self.blink_on,
             focused: self.focus_handle.is_focused(window),
@@ -1017,6 +1170,23 @@ impl Render for PttView {
                     .map(|(text, _)| notice_element(text.clone(), &self.font, self.layout)),
             )
     }
+}
+
+/// 把帳號設定對話框蓋到這一幀的格子上（不動 PTT 的網格），回傳游標所在格。
+/// 表單給的是 ANSI 文字列，餵進暫時的網格取出格子，寬字與顏色的處理跟 PTT 畫面完全一樣；
+/// 只在對話框開著時每幀建一次
+fn overlay_form(cells: &mut [Cell], form: &AccountForm) -> (usize, usize) {
+    let mut scratch = Grid::new();
+    scratch.set_utf8(true);
+    for (i, line) in form.lines().iter().enumerate() {
+        let row = FORM_TOP + i;
+        scratch.write_text(&format!("\x1b[{};{}H{line}", row + 1, FORM_LEFT + 1));
+        let start = row * COLS + FORM_LEFT;
+        let end = start + account_form::WIDTH;
+        cells[start..end].copy_from_slice(&scratch.cells()[start..end]);
+    }
+    let (row, col) = form.cursor();
+    (FORM_TOP + row, FORM_LEFT + col)
 }
 
 /// 底部置中的提示訊息（重連冷卻／確認／關閉中）。浮在網格上、不寫進網格，
@@ -1471,6 +1641,78 @@ fn draw_geometry(window: &mut Window, cp: u32, b: Bounds<Pixels>, color: Hsla) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 假資料同 config.example.json
+    fn sample_form() -> AccountForm {
+        AccountForm::new("your_ptt_id", "your_password", "y")
+    }
+
+    fn overlay_row_text(cells: &[Cell], row: usize) -> String {
+        cells[row * COLS..(row + 1) * COLS]
+            .iter()
+            .filter(|c| c.half != 2)
+            .map(|c| if c.glyph == '\0' { ' ' } else { c.glyph })
+            .collect()
+    }
+
+    #[test]
+    fn form_overlay_covers_exactly_its_rectangle() {
+        let mut cells = vec![Cell::BLANK; ROWS * COLS];
+        overlay_form(&mut cells, &sample_form());
+        for row in 0..ROWS {
+            for col in 0..COLS {
+                let inside = (FORM_TOP..FORM_TOP + account_form::HEIGHT).contains(&row)
+                    && (FORM_LEFT..FORM_LEFT + account_form::WIDTH).contains(&col);
+                let cell = cells[row * COLS + col];
+                if !inside {
+                    assert!(cell == Cell::BLANK, "對話框外的格子被動到：{row},{col}");
+                }
+            }
+            if (FORM_TOP..FORM_TOP + account_form::HEIGHT).contains(&row) {
+                // 每列左右兩端都是有底色的空白：表單算的寬度與網格的字寬一致，沒有少畫或折行
+                for col in [FORM_LEFT, FORM_LEFT + account_form::WIDTH - 1] {
+                    let cell = cells[row * COLS + col];
+                    assert_eq!(cell.glyph, ' ', "列 {row} 欄 {col}");
+                    assert_ne!(cell_colors(&cell).1, 0, "列 {row} 欄 {col} 沒有底色");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn form_overlay_shows_values_but_masks_password() {
+        let mut cells = vec![Cell::BLANK; ROWS * COLS];
+        let cursor = overlay_form(&mut cells, &sample_form());
+        let all: String = (0..ROWS).map(|r| overlay_row_text(&cells, r)).collect();
+        assert!(overlay_row_text(&cells, FORM_TOP).contains("帳號設定"));
+        let username_row = overlay_row_text(&cells, FORM_TOP + 2);
+        assert!(username_row.contains("帳號：") && username_row.contains("your_ptt_id"));
+        let password_row = overlay_row_text(&cells, FORM_TOP + 3);
+        assert!(password_row.contains("密碼：") && password_row.contains("************* "));
+        assert!(!all.contains("your_password"));
+        // 游標停在帳號欄文字之後
+        let (row, col) = cursor;
+        assert_eq!(row, FORM_TOP + 2);
+        assert_eq!(cells[row * COLS + col - 1].glyph, 'd');
+        assert_eq!(cells[row * COLS + col].glyph, ' ');
+    }
+
+    #[test]
+    fn form_overlay_replaces_what_was_underneath() {
+        let mut g = Grid::new();
+        g.set_utf8(true);
+        for _ in 0..ROWS {
+            g.write_text(&"中".repeat(COLS / 2));
+        }
+        let mut cells = g.cells().to_vec();
+        overlay_form(&mut cells, &sample_form());
+        // 空白列：對話框範圍內不殘留底下的字，範圍外原樣保留
+        let row = &cells[(FORM_TOP + 1) * COLS..(FORM_TOP + 2) * COLS];
+        let right = FORM_LEFT + account_form::WIDTH;
+        assert!(row[FORM_LEFT..right].iter().all(|c| c.glyph == ' '));
+        assert!(row[..FORM_LEFT].iter().all(|c| c.glyph == '中'));
+        assert!(row[right..].iter().all(|c| c.glyph == '中'));
+    }
 
     #[test]
     fn preedit_cells_counts_wide_and_narrow_chars() {

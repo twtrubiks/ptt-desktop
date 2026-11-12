@@ -1,5 +1,6 @@
 //! PTT 桌面客戶端（GPUI 版）：進入點只做視窗與視圖的組裝。
 
+mod account_form;
 mod auto_login;
 mod config;
 mod grid;

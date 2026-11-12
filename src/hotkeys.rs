@@ -1,4 +1,4 @@
-//! 按鍵轉譯：保留的本地鍵（Ctrl+R 重連、F11 全螢幕）→ 設定檔快捷鍵 → 終端機按鍵編碼。
+//! 按鍵轉譯：保留的本地鍵（Ctrl+R 重連、F11 全螢幕、Ctrl+Shift+C/V/S/Q）→ 設定檔快捷鍵 → 終端機按鍵編碼。
 //! 可列印字元**不在此處送出**：GPUI 在 keydown 未被攔下時會把 `key_char` 交給
 //! IME input handler（`replace_text_in_range`），中文輸入法的提交文字也走同一條路，
 //! 由 view 統一送出，才不會重複送。
@@ -29,6 +29,10 @@ pub enum KeyAction {
     Copy,
     /// Ctrl+Shift+V：貼上剪貼簿文字
     Paste,
+    /// Ctrl+Shift+S：開啟帳號設定對話框
+    AccountSettings,
+    /// Ctrl+Shift+Q：結束程式（先正常關閉連線）
+    Quit,
     /// 放行（可列印字元由 input handler 送出；其餘忽略）
     Pass,
 }
@@ -127,11 +131,14 @@ impl Hotkeys {
         }
         if mods.any_non_shift() {
             if mods.ctrl && !mods.alt && !mods.platform {
-                // 終端機慣例：Ctrl+Shift+C/V 是本地複製貼上（Ctrl+C 仍送 0x03 給 PTT）
+                // 終端機慣例：Ctrl+Shift+C/V 是本地複製貼上（Ctrl+C 仍送 0x03 給 PTT）；
+                // 帳號設定比照用 Ctrl+Shift，不佔用 PTT 的控制碼
                 if mods.shift {
                     match key.as_str() {
                         "c" => return KeyAction::Copy,
                         "v" => return KeyAction::Paste,
+                        "s" => return KeyAction::AccountSettings,
+                        "q" => return KeyAction::Quit,
                         _ => {}
                     }
                 }
@@ -303,6 +310,36 @@ mod tests {
         // 沒按 Shift 仍是送給 PTT 的控制碼
         assert_eq!(h.translate("c", None, CTRL), KeyAction::Send(vec![0x03]));
         assert_eq!(h.translate("v", None, CTRL), KeyAction::Send(vec![0x16]));
+    }
+
+    #[test]
+    fn ctrl_shift_s_opens_account_settings_even_if_configured() {
+        let h = hk(&[("s", "x")]);
+        let cs = Mods {
+            ctrl: true,
+            shift: true,
+            ..NONE
+        };
+        assert_eq!(h.translate("s", None, cs), KeyAction::AccountSettings);
+        assert_eq!(h.translate("S", Some("S"), cs), KeyAction::AccountSettings);
+        // 沒按 Shift 仍是送給 PTT 的 Ctrl+S
+        assert_eq!(h.translate("s", None, CTRL), KeyAction::Send(vec![0x13]));
+    }
+
+    #[test]
+    fn ctrl_shift_q_quits_even_if_configured() {
+        let h = hk(&[("q", "x")]);
+        let cs = Mods {
+            ctrl: true,
+            shift: true,
+            ..NONE
+        };
+        assert_eq!(h.translate("q", None, cs), KeyAction::Quit);
+        assert_eq!(h.translate("Q", Some("Q"), cs), KeyAction::Quit);
+        // 沒按 Shift 仍是送給 PTT 的 Ctrl+Q；加了 Alt 不算
+        assert_eq!(h.translate("q", None, CTRL), KeyAction::Send(vec![0x11]));
+        let cas = Mods { alt: true, ..cs };
+        assert_eq!(h.translate("q", None, cas), KeyAction::Pass);
     }
 
     #[test]
