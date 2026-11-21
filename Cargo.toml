@@ -23,3 +23,8 @@ libc = "0.2"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# gpui 0.2.2 加上 Wayland 閒置不送空 commit 的修正（原因見 docs/comparison.md）；
+# 上游發新版並完成升版後整段移除，連同 vendor/gpui
+[patch.crates-io]
+gpui = { path = "vendor/gpui" }
