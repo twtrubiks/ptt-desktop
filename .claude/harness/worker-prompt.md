@@ -61,7 +61,7 @@
 
 - 不新增 `unsafe`（`net.rs` 的 `libc::poll` 是既有例外；不得不用時附 `// SAFETY:` 說明）
 - 執行期路徑不 `unwrap()`／`expect()` 外部輸入（網路資料、設定檔、圖片）；測試內不限
-- gpui 0.2 的 API 用法不確定時讀 `~/.cargo/registry` 的原始碼，不憑記憶猜
+- gpui 0.2 的 API 用法不確定時讀 `vendor/gpui` 的原始碼，不憑記憶猜
 
 ## Preflight（自我點檢，全綠才算完成）
 

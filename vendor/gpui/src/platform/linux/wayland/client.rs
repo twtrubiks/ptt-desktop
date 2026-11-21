@@ -969,7 +969,44 @@ impl Dispatch<WlCallback, ObjectId> for WaylandClientStatePtr {
 
         if let wl_callback::Event::Done { .. } = event {
             window.frame();
+            start_idle_poll(&client, &window, surface_id);
         }
+    }
+}
+
+// PTT-PATCH：閒置輪詢的間隔，約一個 60 Hz 的 vsync。只影響「閒置後第一幀」的延遲，
+// 之後就回到合成器 frame callback 驅動。
+const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(16);
+
+/// PTT-PATCH：這一幀沒有 commit 時，改用 timer 輪詢（說明見 `window.rs` 的 `begin_idle_poll`）。
+/// 視窗關閉後查不到 surface，timer 自行結束。
+fn start_idle_poll(
+    client: &Rc<RefCell<WaylandClientState>>,
+    window: &WaylandWindowStatePtr,
+    surface_id: &ObjectId,
+) {
+    if !window.begin_idle_poll() {
+        return;
+    }
+    let surface_id = surface_id.clone();
+    let loop_handle = client.borrow().loop_handle.clone();
+    let inserted = loop_handle.insert_source(Timer::from_duration(IDLE_POLL_INTERVAL), {
+        move |_, _, this| {
+            let client = this.get_client();
+            let mut state = client.borrow_mut();
+            let Some(window) = get_window(&mut state, &surface_id) else {
+                return TimeoutAction::Drop;
+            };
+            drop(state);
+            if window.poll_idle_frame() {
+                TimeoutAction::ToDuration(IDLE_POLL_INTERVAL)
+            } else {
+                TimeoutAction::Drop
+            }
+        }
+    });
+    if inserted.is_err() {
+        window.abort_idle_poll();
     }
 }
 
@@ -1059,6 +1096,8 @@ impl Dispatch<xdg_surface::XdgSurface, ObjectId> for WaylandClientStatePtr {
         };
         drop(state);
         window.handle_xdg_surface_event(event);
+        // PTT-PATCH：第一次 configure 會跑第一幀，沒 commit 的話同樣要靠輪詢接手
+        start_idle_poll(&client, &window, surface_id);
     }
 }
 

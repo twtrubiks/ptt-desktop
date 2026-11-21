@@ -168,4 +168,4 @@ PTT 短時間內重複登入會顯示「請勿頻繁登入」，所以：
 `build.rs` 是連結墊片：gpui 要不帶版號的 `libxkbcommon-x11.so`，Debian 把它放在
 `libxkbcommon-x11-dev`。沒裝時在 `$OUT_DIR` 建一個指向執行期 `.so.0` 的 symlink，裝了就什麼都不做。
 
-GPU 用量偏高是 gpui 0.2.2 的問題，目前等上游發版，見 [`comparison.md`](comparison.md#gpu-問題的上游狀態)。
+GPU 用量偏高是 gpui 0.2.2 的問題；閒置的部分已在 `vendor/gpui` 修正，其餘等上游發版，見 [`comparison.md`](comparison.md#gpu-問題的上游狀態)。

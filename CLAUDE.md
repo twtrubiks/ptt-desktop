@@ -9,7 +9,8 @@ PTT 桌面客戶端（GPUI 全 Rust）。固定 80×24 BBS 終端畫面，經官
 
 ## Tech Stack
 
-- Rust 2021 + gpui 0.2（版本釘住，升版是獨立任務）
+- Rust 2021 + gpui 0.2（版本釘住，升版是獨立任務）。實際編譯的是 `vendor/gpui`（0.2.2 加上
+  `PTT-PATCH` 標記的修正，理由見 `docs/comparison.md`），不要順手改它
 - 連線：tungstenite + native-tls（ws.ptt.cc 不支援 TLS 1.3，不能換 rustls）
 - 測試：`cargo test`（單元測試寫在各模組內，fixture 在 `tests/fixtures/`）；E2E 為手動清單 `docs/e2e-checklist.md`
 
@@ -64,4 +65,4 @@ scripts/build-appimage.sh       # 本機打包 AppImage（用法見檔頭；推 
 - 註解、文件、commit message 使用繁體中文；commit 遵循 Conventional Commits
 - 文件只寫現況與一兩句理由，不記日期、任務編號與修正過程；實測數字放 `docs/comparison.md`
 - 有狀態模組（`docs/architecture.md` 模組表標「（有狀態）」者）改動必附 edge case 測試
-- gpui 0.2 的 API 不確定時讀 `~/.cargo/registry` 裡的原始碼，不憑記憶猜
+- gpui 0.2 的 API 不確定時讀 `vendor/gpui` 的原始碼，不憑記憶猜

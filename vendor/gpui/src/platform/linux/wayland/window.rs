@@ -111,6 +111,13 @@ pub struct WaylandWindowState {
     hovered: bool,
     in_progress_configure: Option<InProgressConfigure>,
     resize_throttle: bool,
+    // PTT-PATCH：閒置時不送空 commit（見 `completed_frame`）
+    /// 有尚未 commit 的 surface 狀態（畫了新內容，或 ack 了 configure）
+    needs_commit: bool,
+    /// 目前這個 frame callback 請求已隨 commit 送出，合成器會回 `Done`
+    frame_committed: bool,
+    /// 閒置輪詢 timer 正在跑
+    idle_polling: bool,
     in_progress_window_controls: Option<WindowControls>,
     window_controls: WindowControls,
     client_inset: Option<Pixels>,
@@ -181,6 +188,10 @@ impl WaylandWindowState {
             window_bounds: options.bounds,
             in_progress_configure: None,
             resize_throttle: false,
+            needs_commit: false,
+            // 第一次 configure 之前沒有待送的 frame callback，不需要輪詢
+            frame_committed: true,
+            idle_polling: false,
             client,
             appearance,
             handle,
@@ -356,13 +367,58 @@ impl WaylandWindowStatePtr {
     pub fn frame(&self) {
         let mut state = self.state.borrow_mut();
         state.surface.frame(&state.globals.qh, state.surface.id());
-        state.resize_throttle = false;
+        state.frame_committed = false;
         drop(state);
+
+        self.run_frame();
+    }
+
+    fn run_frame(&self) {
+        self.state.borrow_mut().resize_throttle = false;
 
         let mut cb = self.callbacks.borrow_mut();
         if let Some(fun) = cb.request_frame.as_mut() {
             fun(Default::default());
         }
+    }
+
+    // PTT-PATCH：以下三個函式是閒置輪詢。這一幀沒有東西要 commit 時，frame callback
+    // 請求留在 surface 上不送出（合成器就不必為了回覆它而每個 vsync 跑一輪），改由 client
+    // 的 timer 定期呼叫 `poll_idle_frame` 看畫面是否變髒；一旦有 commit，請求隨之送出，
+    // 回到由合成器 `Done` 驅動的迴圈。輪詢不再另外請求 frame callback，所以兩次 `Done`
+    // 之間最多只 present 一次，視窗被隱藏時不會卡在等 vsync 的 present 上。
+
+    /// 需要啟動閒置輪詢時回傳 true，並記下「輪詢中」。
+    pub fn begin_idle_poll(&self) -> bool {
+        let mut state = self.state.borrow_mut();
+        if state.frame_committed || state.idle_polling {
+            return false;
+        }
+        state.idle_polling = true;
+        true
+    }
+
+    /// timer 每次到期呼叫；回傳 false 表示輪詢該停了。
+    pub fn poll_idle_frame(&self) -> bool {
+        if !self.state.borrow().frame_committed {
+            self.run_frame();
+        }
+        let mut state = self.state.borrow_mut();
+        if state.frame_committed {
+            state.idle_polling = false;
+            false
+        } else {
+            true
+        }
+    }
+
+    /// timer 掛不上去時退回原本的行為：直接 commit，讓合成器回 `Done`。
+    pub fn abort_idle_poll(&self) {
+        let mut state = self.state.borrow_mut();
+        state.idle_polling = false;
+        state.needs_commit = false;
+        state.frame_committed = true;
+        state.surface.commit();
     }
 
     pub fn handle_xdg_surface_event(&self, event: xdg_surface::Event) {
@@ -414,6 +470,8 @@ impl WaylandWindowStatePtr {
             }
             let mut state = self.state.borrow_mut();
             state.xdg_surface.ack_configure(serial);
+            // PTT-PATCH：ack 要隨下一次 commit 才生效，即使這一幀沒重畫也要送
+            state.needs_commit = true;
 
             let window_geometry = inset_by_tiling(
                 state.bounds.map_origin(|_| px(0.0)),
@@ -1020,11 +1078,19 @@ impl PlatformWindow for WaylandWindow {
     fn draw(&self, scene: &Scene) {
         let mut state = self.borrow_mut();
         state.renderer.draw(scene);
+        state.needs_commit = true;
     }
 
     fn completed_frame(&self) {
-        let state = self.borrow();
-        state.surface.commit();
+        // PTT-PATCH：原本每一幀都 commit，沒畫東西時也送出只帶 frame callback 請求的
+        // 空 commit，合成器因此每個 vsync 都被叫醒。改成有東西才 commit；沒有的話由
+        // client 在這一幀結束後啟動閒置輪詢（`begin_idle_poll`）。
+        let mut state = self.borrow_mut();
+        if state.needs_commit {
+            state.needs_commit = false;
+            state.frame_committed = true;
+            state.surface.commit();
+        }
     }
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
