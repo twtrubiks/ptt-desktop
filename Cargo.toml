@@ -1,6 +1,6 @@
 [package]
 name = "ptt-gpui"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 description = "PTT 桌面客戶端（GPUI）"
 authors = ["twtrubiks"]
