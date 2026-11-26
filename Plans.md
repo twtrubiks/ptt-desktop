@@ -16,10 +16,10 @@
 
 ## 等上游
 
-- **GPU 用量**：閒置的部分已在 `vendor/gpui` 修正；翻頁時每幀重畫仍等上游。gpui 在 crates.io
-  何時發新版沒有時程，而且升版是一次移植（平台層已拆成多個 crate），不是換版本號。
-  等不及時可以把上游 #45369 套進 `vendor/gpui`，由使用者決定。
-  細節見 [`docs/comparison.md`](docs/comparison.md#gpu-問題的上游狀態)。
+- **gpui 升版**：GPU 的兩個問題（輸入後每幀重畫、Wayland 閒置空 commit）已在 `vendor/gpui`
+  修正，修正後的 GPU 用量尚未重量。gpui 在 crates.io 何時發新版沒有時程，而且升版是一次移植
+  （平台層已拆成多個 crate），不是換版本號；升版後要重跑 `docs/e2e-checklist.md` 的 Wayland
+  閒置與出幀兩項。細節見 [`docs/comparison.md`](docs/comparison.md#gpu-問題的上游狀態)。
 
 ## 任務列表
 

@@ -24,7 +24,8 @@ lto = "thin"
 codegen-units = 1
 strip = true
 
-# gpui 0.2.2 加上 PTT-PATCH 標記的修正（Wayland 閒置不送空 commit 等，見 docs/comparison.md）。
+# gpui 0.2.2 加上 PTT-PATCH 標記的修正（輸入後不每幀重畫、Wayland 閒置不送空 commit 等，
+# 見 docs/comparison.md）。
 # 上游下一版已拆成多個 crate、進入點也改了，升版是一次移植而不是換版本號；
 # 移植完成後整段移除，連同 vendor/gpui
 [patch.crates-io]
