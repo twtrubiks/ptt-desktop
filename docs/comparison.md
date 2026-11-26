@@ -134,8 +134,17 @@ PTT 語意、也是唯一的畫面模型，半字與雙色字在繪製時以 con
 
 剩下的每秒 2 幀是游標閃爍。上面「GPU 用量」表的整機 GPU 數字尚未以修正版重量。
 
-`vendor/gpui` 是 crates.io 的 0.2.2 去掉 examples、docs、tests（3.2 MB）。**gpui 在 crates.io
-發新版並完成升版後，連同 `[patch.crates-io]` 整段移除，並重量一次。**
+`vendor/gpui` 是 crates.io 的 0.2.2 去掉 examples、docs、tests（3.2 MB）。除了上面的 Wayland
+修正，另有兩處讓它在之後的 Rust 仍能編譯的小修改，同樣以 `PTT-PATCH` 標記：
+
+- `src/taffy.rs`：浮點字面值明寫 `f32`，不再靠 `float_literal_f32_fallback` 退回。
+- `Cargo.toml`：`stacksafe` 由 0.1 升到 1.x，拿掉會觸發 future-incompat lint 的
+  `proc-macro-error2`（少兩個編譯單元，執行期行為相同）。
+
+**`vendor/gpui` 不是短期措施。** 上游 main 的版本號仍是 0.2.2，但平台層已拆成 `gpui_platform`
+等多個 crate、進入點也改了，而且這些 crate 目前都設成不發布，crates.io 何時有新版沒有時程。
+就算發了，升版也是一次移植而不是換版本號。**移植完成後，連同 `[patch.crates-io]` 整段移除，
+並重量一次。**
 
 ### 翻頁時每幀重畫：仍等上游
 

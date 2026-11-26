@@ -374,8 +374,10 @@ features = ["union"]
 [dependencies.smol]
 version = "2.0"
 
+# PTT-PATCH：原為 "0.1"。0.1 的 macro 依賴 proc-macro-error2，後者會觸發 future-incompat
+# lint（之後的 Rust 會變成錯誤）；1.x 已不依賴它，執行期行為相同
 [dependencies.stacksafe]
-version = "0.1"
+version = "1"
 
 [dependencies.strum]
 version = "0.27.2"

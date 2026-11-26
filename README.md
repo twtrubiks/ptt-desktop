@@ -135,8 +135,8 @@ chmod 600 ~/.config/ptt-desktop/config.json   # 密碼為明文，務必收緊�
 
 ## 已知限制
 
-- **GPU 用量偏高**：gpui 0.2.2 在輸入後 1 秒內每幀都重畫，閒置時也讓 GPU 進不了省電狀態，
-  對筆電續航不利。上游已修正但尚未在 crates.io 發版，目前等上游；詳見
+- **翻頁時 GPU 用量偏高**：gpui 0.2.2 在輸入後 1 秒內每幀都重畫，對筆電續航不利。上游已修正
+  但尚未在 crates.io 發版，目前等上游（閒置時的同類問題已在 `vendor/gpui` 自行修正）；詳見
   [比較文件](docs/comparison.md#gpu-問題的上游狀態)
 - 只支援 Linux，需要可用的 Vulkan 驅動（沒有 OpenGL 或軟體繪製後備）
 - 密碼以明文存於設定檔；手動建立的設定檔請自行 `chmod 600`

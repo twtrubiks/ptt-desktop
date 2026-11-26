@@ -309,7 +309,9 @@ impl ToTaffy<taffy::style::Style> for Style {
             unit: &Option<u16>,
         ) -> Vec<taffy::GridTemplateComponent<T>> {
             // grid-template-columns: repeat(<number>, minmax(0, 1fr));
-            unit.map(|count| vec![repeat(count, vec![minmax(length(0.0), fr(1.0))])])
+            // PTT-PATCH：明寫 f32。不寫型別時靠 `f32: From<f64>` 不成立才退回 f32，
+            // 這個退回（`float_literal_f32_fallback`）之後的 Rust 會變成錯誤
+            unit.map(|count| vec![repeat(count, vec![minmax(length(0.0_f32), fr(1.0_f32))])])
                 .unwrap_or_default()
         }
 
