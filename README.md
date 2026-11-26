@@ -135,9 +135,9 @@ chmod 600 ~/.config/ptt-desktop/config.json   # 密碼為明文，務必收緊�
 
 ## 已知限制
 
-- **GPU 用量比舊版高**：gpui 沒有局部重畫，每次更新都重畫整個畫面。gpui 0.2.2 另有兩個
-  多耗 GPU 的行為（輸入後 1 秒內每幀重畫、Wayland 閒置時空 commit），已在 `vendor/gpui`
-  自行修正，修正後的用量尚未重量；詳見
+- **GPU 用量比舊版高**：gpui 沒有局部重畫，每次更新都重畫整個畫面。使用的 UI 框架
+  gpui（0.2.2 版）另有兩個多耗 GPU 的行為（輸入後 1 秒內每幀重畫、Wayland 閒置時空 commit），
+  本專案已自行修正；詳見
   [比較文件](docs/comparison.md#gpu-問題的上游狀態)
 - 只支援 Linux，需要可用的 Vulkan 驅動（沒有 OpenGL 或軟體繪製後備）
 - 密碼以明文存於設定檔；手動建立的設定檔請自行 `chmod 600`
